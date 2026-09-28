@@ -27,30 +27,29 @@ func MachineJSON(machine collect.Machine, model models.Model) any {
 	return view{Machine: machine, MarketingName: model.MarketingName}
 }
 
-// CPUJSON merges the compact CPU facts (brand, core counts) with the
+// CPUJSON merges the compact CPU facts (brand, total cores) with the
 // detailed per-cluster/family/features breakdown that's otherwise only
 // available via `--section cpu`: JSON output favors completeness over the
-// text view's fast/detailed split.
+// text view's fast/detailed split. detail.Clusters already carries each
+// tier's name and core count (plus cache info the compact collector
+// doesn't fetch), so there's no separate performanceCores/efficiencyCores
+// pair here - see it there instead.
 func CPUJSON(cpu collect.CPU, detail collect.CPUDetail) any {
 	type view struct {
-		BrandName        string               `json:"brandName"`
-		TotalCores       uint16               `json:"totalCores"`
-		PerformanceCores uint16               `json:"performanceCores"`
-		EfficiencyCores  uint16               `json:"efficiencyCores"`
-		Family           string               `json:"family"`
-		PageSize         uint32               `json:"pageSize"`
-		Clusters         []collect.CPUCluster `json:"clusters"`
-		Features         []string             `json:"features"`
+		BrandName  string               `json:"brandName"`
+		TotalCores uint16               `json:"totalCores"`
+		Family     string               `json:"family"`
+		PageSize   uint32               `json:"pageSize"`
+		Clusters   []collect.CPUCluster `json:"clusters"`
+		Features   []string             `json:"features"`
 	}
 	return view{
-		BrandName:        cpu.BrandName,
-		TotalCores:       cpu.TotalCores,
-		PerformanceCores: cpu.PerformanceCores,
-		EfficiencyCores:  cpu.EfficiencyCores,
-		Family:           detail.Family,
-		PageSize:         detail.PageSize,
-		Clusters:         detail.Clusters,
-		Features:         detail.Features,
+		BrandName:  cpu.BrandName,
+		TotalCores: cpu.TotalCores,
+		Family:     detail.Family,
+		PageSize:   detail.PageSize,
+		Clusters:   detail.Clusters,
+		Features:   detail.Features,
 	}
 }
 

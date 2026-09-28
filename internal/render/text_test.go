@@ -52,7 +52,9 @@ func TestChipUnknownFallsBackToID(t *testing.T) {
 
 func TestCPU(t *testing.T) {
 	var buf bytes.Buffer
-	cpu := collect.CPU{BrandName: "Apple M2", TotalCores: 8, PerformanceCores: 4, EfficiencyCores: 4}
+	cpu := collect.CPU{BrandName: "Apple M2", TotalCores: 8, Clusters: []collect.CPUClusterCores{
+		{Name: "Performance", Cores: 4}, {Name: "Efficiency", Cores: 4},
+	}}
 
 	if err := CPU(&buf, cpu); err != nil {
 		t.Fatalf("CPU() error = %v", err)
@@ -60,6 +62,27 @@ func TestCPU(t *testing.T) {
 
 	if !strings.Contains(buf.String(), "8 cores: 4P + 4E") {
 		t.Errorf("CPU() output = %q, want it to contain %q", buf.String(), "8 cores: 4P + 4E")
+	}
+}
+
+// A single homogeneous tier (as seen on GitHub's virtualized macOS
+// runners) must not be force-fit into the P/E label.
+func TestCPUSingleTier(t *testing.T) {
+	var buf bytes.Buffer
+	cpu := collect.CPU{BrandName: "VMAPPLE2", TotalCores: 3, Clusters: []collect.CPUClusterCores{
+		{Name: "Standard", Cores: 3},
+	}}
+
+	if err := CPU(&buf, cpu); err != nil {
+		t.Fatalf("CPU() error = %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "3 cores: 3 Standard") {
+		t.Errorf("CPU() output = %q, want it to contain %q", out, "3 cores: 3 Standard")
+	}
+	if strings.Contains(out, "P +") || strings.Contains(out, "E\n") {
+		t.Errorf("CPU() output = %q, want no P/E label for a single tier", out)
 	}
 }
 

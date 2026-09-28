@@ -8,48 +8,71 @@ import (
 	"fcuny.net/lsmac/internal/source"
 )
 
-// CPU holds the CPU facts collected for the SoC section.
-type CPU struct {
-	BrandName        string `json:"brandName"`
-	TotalCores       uint16 `json:"totalCores"`
-	PerformanceCores uint16 `json:"performanceCores"`
-	EfficiencyCores  uint16 `json:"efficiencyCores"`
+// CPUClusterCores names one performance-level tier and its core count, for
+// the compact CPU line. Every real Apple Silicon Mac shipped so far has
+// exactly two - "Performance" and "Efficiency" - but this doesn't assume
+// that: environments like GitHub's macOS Actions runners (a virtualized
+// Apple Silicon environment) report a single homogeneous "Standard" tier
+// via hw.nperflevels=1, discovered by running lsmac there in CI.
+type CPUClusterCores struct {
+	Name  string `json:"name"`
+	Cores uint16 `json:"cores"`
 }
 
-// CollectCPU reads CPU brand and core counts via sysctl.
+// CPU holds the CPU facts collected for the SoC section.
+type CPU struct {
+	BrandName  string            `json:"brandName"`
+	TotalCores uint16            `json:"totalCores"`
+	Clusters   []CPUClusterCores `json:"clusters"`
+}
+
+// CollectCPU reads CPU brand, total core count, and each performance-level
+// tier's name and core count via sysctl.
 //
-// hw.perflevel0 is the performance cluster and hw.perflevel1 is the
-// efficiency cluster; the original socinfo code swapped these when
-// assigning them to PCoreCount/ECoreCount.
+// It queries hw.nperflevels first, then all levels' name/logicalcpu keys in
+// one further batched call, rather than assuming exactly two tiers
+// (hw.perflevel0 = performance, hw.perflevel1 = efficiency): the original
+// socinfo code assumed exactly that pair and swapped them when assigning to
+// PCoreCount/ECoreCount, and assuming the pair exists at all breaks outright
+// on a single-tier machine (see the CPUClusterCores doc comment). This still
+// costs only two sysctl calls total, regardless of how many tiers exist.
 func CollectCPU(cmd source.SystemCommand) (CPU, error) {
-	values, err := source.Sysctl(cmd,
-		"machdep.cpu.brand_string",
-		"machdep.cpu.core_count",
-		"hw.perflevel0.logicalcpu",
-		"hw.perflevel1.logicalcpu",
-	)
+	head, err := source.Sysctl(cmd, "machdep.cpu.brand_string", "machdep.cpu.core_count", "hw.nperflevels")
 	if err != nil {
 		return CPU{}, err
 	}
 
-	total, err := strconv.ParseUint(values[1], 10, 16)
+	total, err := strconv.ParseUint(head[1], 10, 16)
+	if err != nil {
+		return CPU{}, fmt.Errorf("machdep.cpu.core_count: %w", err)
+	}
+	nperflevels, err := strconv.Atoi(head[2])
+	if err != nil {
+		return CPU{}, fmt.Errorf("hw.nperflevels: %w", err)
+	}
+
+	keys := make([]string, 0, nperflevels*2)
+	for i := range nperflevels {
+		keys = append(keys, fmt.Sprintf("hw.perflevel%d.name", i), fmt.Sprintf("hw.perflevel%d.logicalcpu", i))
+	}
+	values, err := source.Sysctl(cmd, keys...)
 	if err != nil {
 		return CPU{}, err
 	}
-	pCores, err := strconv.ParseUint(values[2], 10, 16)
-	if err != nil {
-		return CPU{}, err
-	}
-	eCores, err := strconv.ParseUint(values[3], 10, 16)
-	if err != nil {
-		return CPU{}, err
+
+	clusters := make([]CPUClusterCores, nperflevels)
+	for i := range nperflevels {
+		cores, err := strconv.ParseUint(values[i*2+1], 10, 16)
+		if err != nil {
+			return CPU{}, fmt.Errorf("hw.perflevel%d.logicalcpu: %w", i, err)
+		}
+		clusters[i] = CPUClusterCores{Name: values[i*2], Cores: uint16(cores)}
 	}
 
 	return CPU{
-		BrandName:        values[0],
-		TotalCores:       uint16(total),
-		PerformanceCores: uint16(pCores),
-		EfficiencyCores:  uint16(eCores),
+		BrandName:  head[0],
+		TotalCores: uint16(total),
+		Clusters:   clusters,
 	}, nil
 }
 

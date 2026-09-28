@@ -54,8 +54,13 @@ func TestMachineJSON(t *testing.T) {
 }
 
 func TestCPUJSON(t *testing.T) {
-	cpu := collect.CPU{BrandName: "Apple M2", TotalCores: 8, PerformanceCores: 4, EfficiencyCores: 4}
-	detail := collect.CPUDetail{Family: "0xDA33D83D", PageSize: 16384, Features: []string{"BTI"}}
+	cpu := collect.CPU{BrandName: "Apple M2", TotalCores: 8, Clusters: []collect.CPUClusterCores{
+		{Name: "Performance", Cores: 4}, {Name: "Efficiency", Cores: 4},
+	}}
+	detail := collect.CPUDetail{
+		Family: "0xDA33D83D", PageSize: 16384, Features: []string{"BTI"},
+		Clusters: []collect.CPUCluster{{Name: "Performance", PhysicalCores: 4}, {Name: "Efficiency", PhysicalCores: 4}},
+	}
 
 	data, err := json.Marshal(CPUJSON(cpu, detail))
 	if err != nil {
@@ -71,6 +76,13 @@ func TestCPUJSON(t *testing.T) {
 	}
 	if decoded["family"] != "0xDA33D83D" {
 		t.Errorf("family = %v, want %q", decoded["family"], "0xDA33D83D")
+	}
+	clusters, ok := decoded["clusters"].([]any)
+	if !ok || len(clusters) != 2 {
+		t.Errorf("clusters = %v, want 2 entries (from CPUDetail, not a separate performanceCores/efficiencyCores pair)", decoded["clusters"])
+	}
+	if _, ok := decoded["performanceCores"]; ok {
+		t.Error("performanceCores present in JSON output, want it dropped in favor of clusters")
 	}
 }
 
