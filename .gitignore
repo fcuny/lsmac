@@ -1,0 +1,4 @@
+/lsmac
+/build/
+*.test
+coverage.out
