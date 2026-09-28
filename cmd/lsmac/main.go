@@ -17,6 +17,13 @@ import (
 	"fcuny.net/lsmac/internal/source"
 )
 
+// version is set at build time via:
+//
+//	go build -ldflags "-X main.version=v1.2.3"
+//
+// It stays "dev" for a plain `go build`/`go install` or `make build`.
+var version = "dev"
+
 // sectionFlag collects repeated `--section NAME` occurrences.
 type sectionFlag []string
 
@@ -32,7 +39,13 @@ func main() {
 	flag.Var(&sections, "section", "print the detailed view of one section (repeatable): "+strings.Join(validSectionNames, ", "))
 	jsonOutput := flag.Bool("json", false, "print structured JSON instead of text")
 	showSerial := flag.Bool("show-serial", false, "include serial number and hardware UUID (hidden by default)")
+	showVersion := flag.Bool("version", false, "print the lsmac version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(version)
+		return
+	}
 
 	cmd := source.NewCachingCommand(source.RealCommand{})
 	fc := source.RealFileChecker{}

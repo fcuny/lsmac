@@ -7,7 +7,16 @@ Mac: OS, machine, firmware, SoC, memory, storage, and power.
 It targets Apple Silicon Macs only, reads everything through `sysctl` and
 `ioreg`, and stays fast: the default view runs in under 100ms.
 
-## Build
+## Install
+
+Download the `darwin-arm64` tarball from the
+[latest release](https://github.com/fcuny/lsmac/releases/latest), extract it,
+and put `lsmac` on your `PATH`:
+
+    tar -xzf lsmac-*-darwin-arm64.tar.gz
+    install lsmac /usr/local/bin/
+
+Or build from source:
 
     make build
 
@@ -17,6 +26,7 @@ It targets Apple Silicon Macs only, reads everything through `sysctl` and
     lsmac --section cpu        # detailed view of one section (repeatable)
     lsmac --json                # structured JSON instead of text
     lsmac --show-serial         # include serial number and hardware UUID
+    lsmac --version              # print the version and exit
 
 ### Default view
 

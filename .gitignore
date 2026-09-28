@@ -1,4 +1,6 @@
 /lsmac
 /build/
+/dist/
 *.test
 coverage.out
+lsmac-*.tar.gz*

@@ -1,7 +1,9 @@
 .PHONY: build test test-cov vet fmt fmt-check ci clean
 
+VERSION := $(shell git describe --tags --dirty --always 2>/dev/null || echo dev)
+
 build:
-	go build -o lsmac ./cmd/lsmac
+	go build -ldflags "-X main.version=$(VERSION)" -o lsmac ./cmd/lsmac
 
 test:
 	go test -race ./...

@@ -1,0 +1,51 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: test
+        run: go test -race ./...
+
+      - name: build darwin/arm64
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          mkdir -p dist
+          GOOS=darwin GOARCH=arm64 go build -ldflags "-X main.version=$VERSION" -o dist/lsmac ./cmd/lsmac
+
+      - name: package
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          archive="lsmac-${VERSION}-darwin-arm64.tar.gz"
+          cp README.md LICENSE dist/
+          tar -czf "$archive" -C dist lsmac README.md LICENSE
+          shasum -a 256 "$archive" > "$archive.sha256"
+
+      - name: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          gh release create "$VERSION" \
+            "lsmac-${VERSION}-darwin-arm64.tar.gz" \
+            "lsmac-${VERSION}-darwin-arm64.tar.gz.sha256" \
+            --title "$VERSION" \
+            --generate-notes
