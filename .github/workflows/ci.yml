@@ -36,4 +36,16 @@ jobs:
         run: go test -race ./...
 
       - name: build
-        run: go build ./...
+        run: go build -o lsmac ./cmd/lsmac
+
+      - name: smoke test
+        run: |
+          echo "::group::default view"
+          ./lsmac
+          echo "::endgroup::"
+          echo "::group::--json"
+          ./lsmac --json
+          echo "::endgroup::"
+          echo "::group::--section cpu"
+          ./lsmac --section cpu
+          echo "::endgroup::"
