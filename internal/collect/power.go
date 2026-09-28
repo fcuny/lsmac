@@ -23,23 +23,33 @@ var ErrNoBattery = errors.New("no battery present")
 // two extra subprocess calls (~19ms combined) for facts that are "nominal"
 // and "off" the overwhelming majority of the time - the default view skips
 // them, matching Storage's FileVaultOn deferral for the same reason.
-//
-// Adapter wattage is not collected: this machine wasn't connected to power
-// while developing this collector, so the relevant AppleSmartBattery
-// fields (AdapterDetails/PowerDistribution) couldn't be verified against
-// real data - left out rather than guessed at from field names alone.
 type Power struct {
-	Percentage    uint8  `json:"percentage"`
-	Charging      bool   `json:"charging"`
-	CycleCount    uint32 `json:"cycleCount"`
-	HealthPercent *uint8 `json:"healthPercent,omitempty"` // FullChargeCapacity / DesignCapacity, both from BatteryData; nil when this firmware's BatteryData schema doesn't expose FullChargeCapacity - see parseBatteryHealth
-	ThermalState  string `json:"thermalState,omitempty"`  // "nominal" or "elevated" - see parseThermalState; "" when not checked
-	LowPowerMode  bool   `json:"lowPowerMode"`
+	Percentage uint8 `json:"percentage"`
+	Charging   bool  `json:"charging"`
+	// PluggedIn is true whenever a power adapter is connected, regardless
+	// of whether the battery is actively charging (e.g. already full).
+	// Charging is only true while current is actually flowing into the
+	// battery - a fully-charged, plugged-in Mac has PluggedIn=true,
+	// Charging=false, which is a real state, not "discharging".
+	PluggedIn bool `json:"pluggedIn"`
+	// AdapterWatts is the connected adapter's rated wattage, from
+	// AdapterDetails.Watts. Nil when no adapter is connected or that
+	// sub-property isn't present.
+	AdapterWatts  *uint16 `json:"adapterWatts,omitempty"`
+	CycleCount    uint32  `json:"cycleCount"`
+	HealthPercent *uint8  `json:"healthPercent,omitempty"` // see parseBatteryHealth
+	ThermalState  string  `json:"thermalState,omitempty"`  // "nominal" or "elevated" - see parseThermalState; "" when not checked
+	LowPowerMode  bool    `json:"lowPowerMode"`
 }
 
 var (
 	fullChargeCapacityRE = regexp.MustCompile(`"FullChargeCapacity"=(\d+)`)
-	designCapacityRE     = regexp.MustCompile(`"DesignCapacity"=(\d+)`)
+	// fccCompRE matches FccComp1 ("Full Charge Capacity, Compensated"),
+	// the bq40z651 gauge's newer-firmware analog to FullChargeCapacity -
+	// see the comment on parseBatteryHealth.
+	fccCompRE        = regexp.MustCompile(`"FccComp1"=(\d+)`)
+	designCapacityRE = regexp.MustCompile(`"DesignCapacity"=(\d+)`)
+	adapterWattsRE   = regexp.MustCompile(`"Watts"=(\d+)`)
 )
 
 const pmsetPath = "/usr/bin/pmset"
@@ -65,6 +75,10 @@ func CollectPower(cmd source.SystemCommand, includeThermal bool) (Power, error) 
 	if err != nil {
 		return Power{}, err
 	}
+	pluggedIn, err := source.BoolProperty(props, "ExternalConnected")
+	if err != nil {
+		return Power{}, err
+	}
 	cycleCount, err := source.IntProperty(props, "CycleCount")
 	if err != nil {
 		return Power{}, err
@@ -79,9 +93,18 @@ func CollectPower(cmd source.SystemCommand, includeThermal bool) (Power, error) 
 		return Power{}, fmt.Errorf("BatteryData: %w", err)
 	}
 
+	var adapterWatts *uint16
+	if pluggedIn {
+		if adapterDetails, ok := props["AdapterDetails"]; ok {
+			adapterWatts = parseAdapterWatts(adapterDetails)
+		}
+	}
+
 	power := Power{
 		Percentage:    uint8(percentage),
 		Charging:      charging,
+		PluggedIn:     pluggedIn,
+		AdapterWatts:  adapterWatts,
 		CycleCount:    uint32(cycleCount),
 		HealthPercent: health,
 	}
@@ -107,22 +130,35 @@ func CollectPower(cmd source.SystemCommand, includeThermal bool) (Power, error) 
 	return power, nil
 }
 
-// parseBatteryHealth extracts FullChargeCapacity and DesignCapacity from
-// AppleSmartBattery's nested BatteryData dict and returns their ratio as a
-// percentage - the standard "battery health" computation (matches what
-// tools like coconutBattery show), since AppleSmartBattery's own top-level
-// MaxCapacity is pinned at 100 rather than reflecting degradation.
+// parseBatteryHealth extracts a full-charge capacity and DesignCapacity
+// from AppleSmartBattery's nested BatteryData dict and returns their ratio
+// as a percentage - the standard "battery health" computation (matches
+// what tools like coconutBattery show), since AppleSmartBattery's own
+// top-level MaxCapacity is pinned at 100 rather than reflecting
+// degradation.
 //
-// Not every machine's battery-gauge firmware uses this schema: an M5 Pro
-// MacBook Pro was found (by a user testing a real release) to report
-// BatteryData with no FullChargeCapacity key at all - instead it carries
-// per-cell Qmax values and a "BatteryHealthMetric" field whose semantics
-// haven't been verified against real health data. Rather than guess a
-// formula for that schema, a missing FullChargeCapacity returns (nil, nil):
-// health is unknown, not an error, and the rest of the Power section still
-// collects normally.
+// Not every machine's battery-gauge firmware uses the same key for this.
+// An M5 Pro MacBook Pro (bq40z651 gauge, newer firmware than the M2 this
+// was first written against) was found by a user running a real release to
+// report BatteryData with no FullChargeCapacity key at all. It does carry
+// FccComp1 ("Full Charge Capacity, Compensated" - a standard TI bq-gauge
+// name), which tracked the battery's charge state across two captures
+// (8516 at 99% charge, 8579 - equal to DesignCapacity - at 100%/fully
+// charged) and, at 100%, computed a health percentage that matched
+// `system_profiler`'s own "Maximum Capacity: 100%" exactly. That's one
+// data point at 100% health, not a confirmed formula across degraded
+// batteries, but it's a real measured value moving with charge state, not
+// a static echo of DesignCapacity - a meaningfully different case from
+// Qmax and BatteryHealthMetric, whose semantics are still unverified and
+// so still aren't used here.
+//
+// If neither key is present, health is unknown: returns (nil, nil), not an
+// error, so the rest of the Power section still collects normally.
 func parseBatteryHealth(batteryData string) (*uint8, error) {
 	full := fullChargeCapacityRE.FindStringSubmatch(batteryData)
+	if full == nil {
+		full = fccCompRE.FindStringSubmatch(batteryData)
+	}
 	if full == nil {
 		return nil, nil
 	}
@@ -132,7 +168,7 @@ func parseBatteryHealth(batteryData string) (*uint8, error) {
 	}
 	fullN, err := strconv.ParseFloat(full[1], 64)
 	if err != nil {
-		return nil, fmt.Errorf("FullChargeCapacity: %w", err)
+		return nil, fmt.Errorf("full charge capacity: %w", err)
 	}
 	designN, err := strconv.ParseFloat(design[1], 64)
 	if err != nil || designN == 0 {
@@ -140,6 +176,22 @@ func parseBatteryHealth(batteryData string) (*uint8, error) {
 	}
 	health := uint8(fullN / designN * 100)
 	return &health, nil
+}
+
+// parseAdapterWatts extracts Watts from a raw AdapterDetails dict value.
+// Returns nil (not an error) when the sub-property isn't present, since
+// the exact AdapterDetails shape isn't guaranteed across adapter types.
+func parseAdapterWatts(adapterDetails string) *uint16 {
+	m := adapterWattsRE.FindStringSubmatch(adapterDetails)
+	if m == nil {
+		return nil
+	}
+	n, err := strconv.ParseUint(m[1], 10, 16)
+	if err != nil {
+		return nil
+	}
+	watts := uint16(n)
+	return &watts
 }
 
 // parseThermalState reads `pmset -g therm`'s output. When macOS has never

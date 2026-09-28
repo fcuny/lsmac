@@ -146,9 +146,6 @@ concrete reason rather than being simply unfinished:
   as raw `pmgr` voltage/frequency tables in the device tree, but decoding
   them correctly needs a mapping from table index to cluster that's specific
   to each chip generation.
-- **Adapter wattage while charging**: the relevant `AppleSmartBattery`
-  fields were never observed populated during development (the machine
-  wasn't plugged in), so nothing here has been verified against real data.
 - **Secure Boot policy** (Full/Reduced/Permissive Security): the only
   reliable source, `bputil -d`, requires root, which lsmac never asks for.
   A plain secure-boot-enabled flag is collected instead.

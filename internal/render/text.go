@@ -301,16 +301,30 @@ func Storage(w io.Writer, storage collect.Storage) error {
 	return nil
 }
 
+// formatChargingState renders the charge-state word(s) after the
+// percentage: "charging via NW" while current is actually flowing in,
+// "plugged in" for a Mac connected to power but not charging (typically
+// already full - a real state, distinct from running on battery), and
+// "discharging" otherwise.
+func formatChargingState(power collect.Power) string {
+	switch {
+	case power.Charging && power.AdapterWatts != nil:
+		return fmt.Sprintf("charging via %dW", *power.AdapterWatts)
+	case power.Charging:
+		return "charging"
+	case power.PluggedIn:
+		return "plugged in"
+	default:
+		return "discharging"
+	}
+}
+
 // Power writes battery charge/charging state, cycle count, health,
 // thermal state, and Low Power Mode. Call only when collect.CollectPower
 // didn't return collect.ErrNoBattery - a Mac without a battery has no
 // Power section at all, never one printed with zeroed fields.
 func Power(w io.Writer, power collect.Power) error {
-	state := "discharging"
-	if power.Charging {
-		state = "charging"
-	}
-	if err := field(w, "Battery", fmt.Sprintf("%d%%, %s", power.Percentage, state)); err != nil {
+	if err := field(w, "Battery", fmt.Sprintf("%d%%, %s", power.Percentage, formatChargingState(power))); err != nil {
 		return err
 	}
 	if err := field(w, "Cycles", fmt.Sprintf("%d", power.CycleCount)); err != nil {
