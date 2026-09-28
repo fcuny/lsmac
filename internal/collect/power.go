@@ -32,8 +32,8 @@ type Power struct {
 	Percentage    uint8  `json:"percentage"`
 	Charging      bool   `json:"charging"`
 	CycleCount    uint32 `json:"cycleCount"`
-	HealthPercent uint8  `json:"healthPercent"`          // FullChargeCapacity / DesignCapacity, both from BatteryData
-	ThermalState  string `json:"thermalState,omitempty"` // "nominal" or "elevated" - see parseThermalState; "" when not checked
+	HealthPercent *uint8 `json:"healthPercent,omitempty"` // FullChargeCapacity / DesignCapacity, both from BatteryData; nil when this firmware's BatteryData schema doesn't expose FullChargeCapacity - see parseBatteryHealth
+	ThermalState  string `json:"thermalState,omitempty"`  // "nominal" or "elevated" - see parseThermalState; "" when not checked
 	LowPowerMode  bool   `json:"lowPowerMode"`
 }
 
@@ -76,7 +76,7 @@ func CollectPower(cmd source.SystemCommand, includeThermal bool) (Power, error) 
 	}
 	health, err := parseBatteryHealth(batteryData)
 	if err != nil {
-		return Power{}, err
+		return Power{}, fmt.Errorf("BatteryData: %w", err)
 	}
 
 	power := Power{
@@ -111,23 +111,35 @@ func CollectPower(cmd source.SystemCommand, includeThermal bool) (Power, error) 
 // AppleSmartBattery's nested BatteryData dict and returns their ratio as a
 // percentage - the standard "battery health" computation (matches what
 // tools like coconutBattery show), since AppleSmartBattery's own top-level
-// MaxCapacity is pinned at 100 rather than reflecting degradation on this
-// machine's firmware version.
-func parseBatteryHealth(batteryData string) (uint8, error) {
+// MaxCapacity is pinned at 100 rather than reflecting degradation.
+//
+// Not every machine's battery-gauge firmware uses this schema: an M5 Pro
+// MacBook Pro was found (by a user testing a real release) to report
+// BatteryData with no FullChargeCapacity key at all - instead it carries
+// per-cell Qmax values and a "BatteryHealthMetric" field whose semantics
+// haven't been verified against real health data. Rather than guess a
+// formula for that schema, a missing FullChargeCapacity returns (nil, nil):
+// health is unknown, not an error, and the rest of the Power section still
+// collects normally.
+func parseBatteryHealth(batteryData string) (*uint8, error) {
 	full := fullChargeCapacityRE.FindStringSubmatch(batteryData)
+	if full == nil {
+		return nil, nil
+	}
 	design := designCapacityRE.FindStringSubmatch(batteryData)
-	if full == nil || design == nil {
-		return 0, fmt.Errorf("BatteryData: FullChargeCapacity/DesignCapacity not found in %q", batteryData)
+	if design == nil {
+		return nil, fmt.Errorf("DesignCapacity not found in %q", batteryData)
 	}
 	fullN, err := strconv.ParseFloat(full[1], 64)
 	if err != nil {
-		return 0, fmt.Errorf("BatteryData: FullChargeCapacity: %w", err)
+		return nil, fmt.Errorf("FullChargeCapacity: %w", err)
 	}
 	designN, err := strconv.ParseFloat(design[1], 64)
 	if err != nil || designN == 0 {
-		return 0, fmt.Errorf("BatteryData: DesignCapacity: %w", err)
+		return nil, fmt.Errorf("DesignCapacity: %w", err)
 	}
-	return uint8(fullN / designN * 100), nil
+	health := uint8(fullN / designN * 100)
+	return &health, nil
 }
 
 // parseThermalState reads `pmset -g therm`'s output. When macOS has never

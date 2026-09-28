@@ -403,11 +403,12 @@ func TestStorageFileVaultOmittedWhenNotChecked(t *testing.T) {
 
 func TestPower(t *testing.T) {
 	var buf bytes.Buffer
+	health := uint8(93)
 	power := collect.Power{
 		Percentage:    80,
 		Charging:      false,
 		CycleCount:    201,
-		HealthPercent: 93,
+		HealthPercent: &health,
 		ThermalState:  "nominal",
 		LowPowerMode:  false,
 	}
@@ -421,6 +422,21 @@ func TestPower(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("Power() output = %q, want it to contain %q", out, want)
 		}
+	}
+}
+
+// Health unknown (a battery-gauge schema without FullChargeCapacity, as
+// found on an M5 Pro MacBook Pro) must not print a Health line at all.
+func TestPowerHealthUnknown(t *testing.T) {
+	var buf bytes.Buffer
+	power := collect.Power{Percentage: 99, CycleCount: 11}
+
+	if err := Power(&buf, power); err != nil {
+		t.Fatalf("Power() error = %v", err)
+	}
+
+	if strings.Contains(buf.String(), "Health") {
+		t.Errorf("Power() output = %q, want no Health line when HealthPercent is nil", buf.String())
 	}
 }
 

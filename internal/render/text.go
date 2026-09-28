@@ -316,8 +316,10 @@ func Power(w io.Writer, power collect.Power) error {
 	if err := field(w, "Cycles", fmt.Sprintf("%d", power.CycleCount)); err != nil {
 		return err
 	}
-	if err := field(w, "Health", fmt.Sprintf("%d%%", power.HealthPercent)); err != nil {
-		return err
+	if power.HealthPercent != nil {
+		if err := field(w, "Health", fmt.Sprintf("%d%%", *power.HealthPercent)); err != nil {
+			return err
+		}
 	}
 	if power.ThermalState == "" {
 		return nil
