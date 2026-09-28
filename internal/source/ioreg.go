@@ -29,18 +29,22 @@ var propertyLine = func(line string) (key, value string, ok bool) {
 	return key, strings.TrimSpace(rest), true
 }
 
-// IORegProperties runs `ioreg -rc <class> -d1` and returns the scalar
-// properties of the first matching object, keyed by property name. Values
-// keep their raw ioreg formatting (quoted strings still quoted); use
-// IntProperty / StringProperty to decode them.
-func IORegProperties(cmd SystemCommand, class string) (map[string]string, error) {
-	output, err := cmd.Execute(ioregPath, "-rc", class, "-d1")
-	if err != nil {
-		return nil, fmt.Errorf("ioreg -rc %s: %w", class, err)
-	}
+// scanObjectProperties reads ioreg's default (non-plist) object dump - an
+// object header line, then a `{ ... }` block of scalar properties - and
+// returns the properties of the first (only expected) object, keyed by
+// property name. Values keep their raw ioreg formatting; use IntProperty /
+// StringProperty / DataProperty to decode them.
+// maxPropertyLineBytes raises bufio.Scanner's default 64KB line limit.
+// Some device-tree properties are large binary blobs printed as a single
+// hex-encoded line - e.g. the "chosen" node's IOProgressBackbuffer (a boot
+// progress image) can run past 100KB - even though nothing we read cares
+// about their content.
+const maxPropertyLineBytes = 8 * 1024 * 1024
 
+func scanObjectProperties(output []byte, errContext string) (map[string]string, error) {
 	props := make(map[string]string)
 	scanner := bufio.NewScanner(bytes.NewReader(output))
+	scanner.Buffer(make([]byte, 0, 64*1024), maxPropertyLineBytes)
 	inObject := false
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -62,13 +66,35 @@ func IORegProperties(cmd SystemCommand, class string) (map[string]string, error)
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("ioreg -rc %s: reading output: %w", class, err)
+		return nil, fmt.Errorf("%s: reading output: %w", errContext, err)
 	}
 
 	if !inObject {
-		return nil, fmt.Errorf("ioreg -rc %s: no matching object found", class)
+		return nil, fmt.Errorf("%s: no matching object found", errContext)
 	}
 	return props, nil
+}
+
+// IORegProperties runs `ioreg -rc <class> -d1` and returns the scalar
+// properties of the first matching object, keyed by property name.
+func IORegProperties(cmd SystemCommand, class string) (map[string]string, error) {
+	output, err := cmd.Execute(ioregPath, "-rc", class, "-d1")
+	if err != nil {
+		return nil, fmt.Errorf("ioreg -rc %s: %w", class, err)
+	}
+	return scanObjectProperties(output, fmt.Sprintf("ioreg -rc %s", class))
+}
+
+// IORegNodeProperties runs `ioreg -p IODeviceTree -n <name> -d1 -r` and
+// returns the scalar properties of the named device-tree node, keyed by
+// property name. Use this for device-tree nodes that aren't IOKit classes,
+// such as "chosen".
+func IORegNodeProperties(cmd SystemCommand, name string) (map[string]string, error) {
+	output, err := cmd.Execute(ioregPath, "-p", "IODeviceTree", "-n", name, "-d1", "-r")
+	if err != nil {
+		return nil, fmt.Errorf("ioreg -p IODeviceTree -n %s: %w", name, err)
+	}
+	return scanObjectProperties(output, fmt.Sprintf("ioreg -p IODeviceTree -n %s", name))
 }
 
 // IntProperty decodes a raw ioreg property value as an integer.
@@ -94,23 +120,52 @@ func StringProperty(props map[string]string, key string) (string, error) {
 	return strings.Trim(raw, `"`), nil
 }
 
-// DataProperty decodes a raw ioreg "data" property (printed as
-// `<68657820...>`) as a NUL-terminated ASCII string. Device tree properties
-// such as platform-name are encoded this way.
-func DataProperty(props map[string]string, key string) (string, error) {
+// dataBytes decodes a raw ioreg "data" property value (printed as
+// `<68657820...>`) to its underlying bytes.
+func dataBytes(props map[string]string, key string) ([]byte, error) {
 	raw, ok := props[key]
 	if !ok {
-		return "", fmt.Errorf("property %q not found", key)
+		return nil, fmt.Errorf("property %q not found", key)
 	}
 	raw = strings.TrimSuffix(strings.TrimPrefix(raw, "<"), ">")
 
 	decoded, err := hex.DecodeString(raw)
 	if err != nil {
-		return "", fmt.Errorf("property %q: not hex data: %q", key, raw)
+		return nil, fmt.Errorf("property %q: not hex data: %q", key, raw)
 	}
+	return decoded, nil
+}
 
+// DataProperty decodes a raw ioreg "data" property as a NUL-terminated
+// ASCII string. Device tree properties such as platform-name are encoded
+// this way.
+func DataProperty(props map[string]string, key string) (string, error) {
+	decoded, err := dataBytes(props, key)
+	if err != nil {
+		return "", err
+	}
 	if i := bytes.IndexByte(decoded, 0); i >= 0 {
 		decoded = decoded[:i]
 	}
 	return string(decoded), nil
+}
+
+// DataPropertyUint decodes a raw ioreg "data" property as a little-endian
+// unsigned integer, e.g. `<01000000>` -> 1. Device tree boolean/enum flags
+// such as secure-boot are encoded this way. Property values longer than 8
+// bytes are rejected.
+func DataPropertyUint(props map[string]string, key string) (uint64, error) {
+	decoded, err := dataBytes(props, key)
+	if err != nil {
+		return 0, err
+	}
+	if len(decoded) > 8 {
+		return 0, fmt.Errorf("property %q: %d bytes too long for an integer", key, len(decoded))
+	}
+
+	var n uint64
+	for i, b := range decoded {
+		n |= uint64(b) << (8 * i)
+	}
+	return n, nil
 }

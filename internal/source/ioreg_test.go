@@ -93,3 +93,55 @@ func TestDataPropertyNotHex(t *testing.T) {
 		t.Fatal("DataProperty() error = nil, want error for non-hex value")
 	}
 }
+
+func TestDataPropertyUint(t *testing.T) {
+	got, err := DataPropertyUint(map[string]string{"secure-boot": "<01000000>"}, "secure-boot")
+	if err != nil {
+		t.Fatalf("DataPropertyUint() error = %v", err)
+	}
+	if got != 1 {
+		t.Errorf("DataPropertyUint() = %d, want 1", got)
+	}
+}
+
+func TestDataPropertyUintTooLong(t *testing.T) {
+	_, err := DataPropertyUint(map[string]string{"x": "<0000000000000000000000000000000000000000>"}, "x")
+	if err == nil {
+		t.Fatal("DataPropertyUint() error = nil, want error for a value longer than 8 bytes")
+	}
+}
+
+// IORegNodeProperties runs ioreg against a named device-tree node (e.g.
+// "chosen") rather than an IOKit class. On a real Mac, the chosen node
+// carries an IOProgressBackbuffer property (a boot progress image) that can
+// run past 100KB on a single line - well beyond bufio.Scanner's default
+// 64KB line limit - so this fixture specifically exercises that.
+func TestIORegNodePropertiesFixtureWithLargeProperty(t *testing.T) {
+	data, err := os.ReadFile("../../testdata/Mac14,2/ioreg-chosen.txt")
+	if err != nil {
+		t.Fatalf("reading fixture: %v", err)
+	}
+
+	cmd := mockCommand{output: string(data)}
+
+	props, err := IORegNodeProperties(cmd, "chosen")
+	if err != nil {
+		t.Fatalf("IORegNodeProperties() error = %v", err)
+	}
+
+	version, err := DataProperty(props, "firmware-version")
+	if err != nil {
+		t.Fatalf("DataProperty(firmware-version) error = %v", err)
+	}
+	if version != "mBoot-20457.1.29" {
+		t.Errorf("firmware-version = %q, want %q", version, "mBoot-20457.1.29")
+	}
+
+	secureBoot, err := DataPropertyUint(props, "secure-boot")
+	if err != nil {
+		t.Fatalf("DataPropertyUint(secure-boot) error = %v", err)
+	}
+	if secureBoot != 1 {
+		t.Errorf("secure-boot = %d, want 1", secureBoot)
+	}
+}

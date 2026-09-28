@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
 	"fcuny.net/lsmac/internal/chips"
 	"fcuny.net/lsmac/internal/collect"
+	"fcuny.net/lsmac/internal/models"
 )
 
 func TestChip(t *testing.T) {
@@ -68,5 +70,140 @@ func TestGPU(t *testing.T) {
 
 	if !strings.Contains(buf.String(), "10 cores") {
 		t.Errorf("GPU() output = %q, want it to contain %q", buf.String(), "10 cores")
+	}
+}
+
+func TestMachine(t *testing.T) {
+	var buf bytes.Buffer
+	machine := collect.Machine{ModelIdentifier: "Mac14,2", SKU: "MN703LL/A"}
+	model := models.Model{Identifier: "Mac14,2", MarketingName: "MacBook Air (M2, 2022)"}
+
+	if err := Machine(&buf, machine, model); err != nil {
+		t.Fatalf("Machine() error = %v", err)
+	}
+
+	out := buf.String()
+	for _, want := range []string{"MacBook Air (M2, 2022) (Mac14,2)", "MN703LL/A"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Machine() output = %q, want it to contain %q", out, want)
+		}
+	}
+	if strings.Contains(out, "Serial") || strings.Contains(out, "UUID") {
+		t.Errorf("Machine() output = %q, want no Serial/UUID lines when empty", out)
+	}
+}
+
+func TestMachineUnknownFallsBackToIdentifier(t *testing.T) {
+	var buf bytes.Buffer
+	machine := collect.Machine{ModelIdentifier: "Mac99,99"}
+
+	if err := Machine(&buf, machine, models.Model{}); err != nil {
+		t.Fatalf("Machine() error = %v", err)
+	}
+
+	if !strings.Contains(buf.String(), "Mac99,99 (Mac99,99)") {
+		t.Errorf("Machine() output = %q, want it to fall back to the model identifier", buf.String())
+	}
+}
+
+func TestMachineShowsSerialWhenPresent(t *testing.T) {
+	var buf bytes.Buffer
+	machine := collect.Machine{ModelIdentifier: "Mac14,2", Serial: "Y9YH5WKX5V", HardwareUUID: "B2D5EAE2-0000-0000-0000-000000000000"}
+
+	if err := Machine(&buf, machine, models.Model{}); err != nil {
+		t.Fatalf("Machine() error = %v", err)
+	}
+
+	out := buf.String()
+	for _, want := range []string{"Y9YH5WKX5V", "B2D5EAE2-0000-0000-0000-000000000000"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Machine() output = %q, want it to contain %q", out, want)
+		}
+	}
+}
+
+func TestOS(t *testing.T) {
+	var buf bytes.Buffer
+	osInfo := collect.OS{
+		ProductName:      "macOS",
+		VersionName:      "Golden Gate",
+		ProductVersion:   "27.0",
+		Build:            "26A428",
+		DarwinVersion:    "27.0.0",
+		Uptime:           13*24*time.Hour + 15*time.Hour,
+		RosettaInstalled: false,
+	}
+
+	if err := OS(&buf, osInfo); err != nil {
+		t.Fatalf("OS() error = %v", err)
+	}
+
+	out := buf.String()
+	for _, want := range []string{"macOS 27.0 Golden Gate (26A428)", "27.0.0", "13 days, 15 hours", "not installed"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("OS() output = %q, want it to contain %q", out, want)
+		}
+	}
+}
+
+func TestOSRosettaInstalled(t *testing.T) {
+	var buf bytes.Buffer
+	osInfo := collect.OS{ProductName: "macOS", ProductVersion: "27.0", Build: "26A428", RosettaInstalled: true}
+
+	if err := OS(&buf, osInfo); err != nil {
+		t.Fatalf("OS() error = %v", err)
+	}
+	if !strings.Contains(buf.String(), "Rosetta    installed") {
+		t.Errorf("OS() output = %q, want %q", buf.String(), "Rosetta    installed")
+	}
+}
+
+func TestFormatUptime(t *testing.T) {
+	tests := []struct {
+		d    time.Duration
+		want string
+	}{
+		{13*24*time.Hour + 15*time.Hour, "13 days, 15 hours"},
+		{24 * time.Hour, "1 day, 0 hours"},
+		{90 * time.Minute, "1 hour, 30 minutes"},
+		{5 * time.Minute, "5 minutes"},
+		{1 * time.Minute, "1 minute"},
+	}
+	for _, tt := range tests {
+		if got := formatUptime(tt.d); got != tt.want {
+			t.Errorf("formatUptime(%v) = %q, want %q", tt.d, got, tt.want)
+		}
+	}
+}
+
+func TestFirmware(t *testing.T) {
+	var buf bytes.Buffer
+	fw := collect.Firmware{Version: "mBoot-20457.1.29", SecureBoot: true, SIPEnabled: true}
+
+	if err := Firmware(&buf, fw); err != nil {
+		t.Fatalf("Firmware() error = %v", err)
+	}
+
+	out := buf.String()
+	for _, want := range []string{"mBoot-20457.1.29", "Secure Boot  enabled", "SIP        enabled"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Firmware() output = %q, want it to contain %q", out, want)
+		}
+	}
+}
+
+func TestFirmwareDisabled(t *testing.T) {
+	var buf bytes.Buffer
+	fw := collect.Firmware{Version: "mBoot-1.2.3"}
+
+	if err := Firmware(&buf, fw); err != nil {
+		t.Fatalf("Firmware() error = %v", err)
+	}
+
+	out := buf.String()
+	for _, want := range []string{"Secure Boot  disabled", "SIP        disabled"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Firmware() output = %q, want it to contain %q", out, want)
+		}
 	}
 }
