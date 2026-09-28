@@ -19,6 +19,8 @@ widens the scope.
   3-Clause `LICENSE`, `.github/workflows/ci.yml` with gofmt, vet, `go test -race`
   and build. CI must run on `macos-latest` (arm64), since the collectors need Darwin.
 - Use the `gh` CLI for anything on GitHub.
+- Work in feature branches with a PR per change; let CI run on the PR before
+  merging. Don't push straight to `main`.
 - Prefer the standard library. `golang.org/x/sys/unix` is fine for `sysctl`.
   Ask before adding any other dependency.
 - Writing style for README, docs and commit messages: active voice, no em dash
