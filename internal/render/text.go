@@ -14,6 +14,19 @@ import (
 	"fcuny.net/lsmac/internal/models"
 )
 
+// labelWidth is the column every top-level field label is padded to, so
+// values line up regardless of label length. It matches "Low Power Mode",
+// the longest label currently in use - computing this from hand-counted
+// spaces per format string is exactly how misalignment bugs like it crept
+// in before, so every field below goes through the field() helper instead.
+const labelWidth = 14
+
+// field writes one "Label   value" line, with label padded to labelWidth.
+func field(w io.Writer, label, value string) error {
+	_, err := fmt.Fprintf(w, "%-*s %s\n", labelWidth, label, value)
+	return err
+}
+
 // Chip writes the chip identity line, plus process node when known. name
 // falls back to the raw chip ID when the chip is not in the internal/chips
 // table. Memory bandwidth is part of the Memory section, not here.
@@ -22,11 +35,11 @@ func Chip(w io.Writer, chip chips.Chip) error {
 	if name == "" {
 		name = chip.ID
 	}
-	if _, err := fmt.Fprintf(w, "Chip       %s (%s)\n", name, chip.ID); err != nil {
+	if err := field(w, "Chip", fmt.Sprintf("%s (%s)", name, chip.ID)); err != nil {
 		return err
 	}
 	if chip.ProcessNode != "" {
-		if _, err := fmt.Fprintf(w, "Process    %s\n", chip.ProcessNode); err != nil {
+		if err := field(w, "Process", chip.ProcessNode); err != nil {
 			return err
 		}
 	}
@@ -35,15 +48,12 @@ func Chip(w io.Writer, chip chips.Chip) error {
 
 // CPU writes the CPU core-count summary line.
 func CPU(w io.Writer, cpu collect.CPU) error {
-	_, err := fmt.Fprintf(w, "CPU        %d cores: %dP + %dE\n",
-		cpu.TotalCores, cpu.PerformanceCores, cpu.EfficiencyCores)
-	return err
+	return field(w, "CPU", fmt.Sprintf("%d cores: %dP + %dE", cpu.TotalCores, cpu.PerformanceCores, cpu.EfficiencyCores))
 }
 
 // GPU writes the GPU summary line.
 func GPU(w io.Writer, gpu collect.GPU) error {
-	_, err := fmt.Fprintf(w, "GPU        %d cores\n", gpu.CoreCount)
-	return err
+	return field(w, "GPU", fmt.Sprintf("%d cores", gpu.CoreCount))
 }
 
 // Machine writes the machine identity line, plus SKU, serial number, and
@@ -56,21 +66,21 @@ func Machine(w io.Writer, machine collect.Machine, model models.Model) error {
 	if name == "" {
 		name = machine.ModelIdentifier
 	}
-	if _, err := fmt.Fprintf(w, "Machine    %s (%s)\n", name, machine.ModelIdentifier); err != nil {
+	if err := field(w, "Machine", fmt.Sprintf("%s (%s)", name, machine.ModelIdentifier)); err != nil {
 		return err
 	}
 	if machine.SKU != "" {
-		if _, err := fmt.Fprintf(w, "SKU        %s\n", machine.SKU); err != nil {
+		if err := field(w, "SKU", machine.SKU); err != nil {
 			return err
 		}
 	}
 	if machine.Serial != "" {
-		if _, err := fmt.Fprintf(w, "Serial     %s\n", machine.Serial); err != nil {
+		if err := field(w, "Serial", machine.Serial); err != nil {
 			return err
 		}
 	}
 	if machine.HardwareUUID != "" {
-		if _, err := fmt.Fprintf(w, "UUID       %s\n", machine.HardwareUUID); err != nil {
+		if err := field(w, "UUID", machine.HardwareUUID); err != nil {
 			return err
 		}
 	}
@@ -84,23 +94,20 @@ func OS(w io.Writer, osInfo collect.OS) error {
 	if osInfo.VersionName != "" {
 		label += " " + osInfo.VersionName
 	}
-	if _, err := fmt.Fprintf(w, "OS         %s (%s)\n", label, osInfo.Build); err != nil {
+	if err := field(w, "OS", fmt.Sprintf("%s (%s)", label, osInfo.Build)); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(w, "Darwin     %s\n", osInfo.DarwinVersion); err != nil {
+	if err := field(w, "Darwin", osInfo.DarwinVersion); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(w, "Uptime     %s\n", formatUptime(osInfo.Uptime)); err != nil {
+	if err := field(w, "Uptime", formatUptime(osInfo.Uptime)); err != nil {
 		return err
 	}
 	rosetta := "not installed"
 	if osInfo.RosettaInstalled {
 		rosetta = "installed"
 	}
-	if _, err := fmt.Fprintf(w, "Rosetta    %s\n", rosetta); err != nil {
-		return err
-	}
-	return nil
+	return field(w, "Rosetta", rosetta)
 }
 
 func formatUptime(d time.Duration) string {
@@ -128,24 +135,21 @@ func plural(n int, unit string) string {
 
 // Firmware writes the system firmware version, Secure Boot, and SIP status.
 func Firmware(w io.Writer, fw collect.Firmware) error {
-	if _, err := fmt.Fprintf(w, "Firmware   %s\n", fw.Version); err != nil {
+	if err := field(w, "Firmware", fw.Version); err != nil {
 		return err
 	}
 	secureBoot := "disabled"
 	if fw.SecureBoot {
 		secureBoot = "enabled"
 	}
-	if _, err := fmt.Fprintf(w, "Secure Boot  %s\n", secureBoot); err != nil {
+	if err := field(w, "Secure Boot", secureBoot); err != nil {
 		return err
 	}
 	sip := "disabled"
 	if fw.SIPEnabled {
 		sip = "enabled"
 	}
-	if _, err := fmt.Fprintf(w, "SIP        %s\n", sip); err != nil {
-		return err
-	}
-	return nil
+	return field(w, "SIP", sip)
 }
 
 // CPUDetail writes the detailed `--section cpu` view: chip identity,
@@ -232,23 +236,20 @@ func wrapFeatures(features []string) string {
 // Memory writes used/total, RAM type, bandwidth (from the chip table), and
 // memory pressure. Type and bandwidth lines are omitted when unknown.
 func Memory(w io.Writer, mem collect.Memory, bandwidthGBs uint32) error {
-	if _, err := fmt.Fprintf(w, "Memory     %s / %s\n", formatGiB(mem.UsedBytes), formatGiB(mem.TotalBytes)); err != nil {
+	if err := field(w, "Memory", fmt.Sprintf("%s / %s", formatGiB(mem.UsedBytes), formatGiB(mem.TotalBytes))); err != nil {
 		return err
 	}
 	if mem.Type != "" {
-		if _, err := fmt.Fprintf(w, "Type       %s\n", mem.Type); err != nil {
+		if err := field(w, "Type", mem.Type); err != nil {
 			return err
 		}
 	}
 	if bandwidthGBs > 0 {
-		if _, err := fmt.Fprintf(w, "Bandwidth  %d GB/s\n", bandwidthGBs); err != nil {
+		if err := field(w, "Bandwidth", fmt.Sprintf("%d GB/s", bandwidthGBs)); err != nil {
 			return err
 		}
 	}
-	if _, err := fmt.Fprintf(w, "Pressure   %s\n", mem.Pressure); err != nil {
-		return err
-	}
-	return nil
+	return field(w, "Pressure", mem.Pressure)
 }
 
 // formatGiB renders a byte count in GiB, dropping the decimal point when
@@ -264,10 +265,10 @@ func formatGiB(n uint64) string {
 // Storage writes the internal disk model, used/total capacity, and
 // FileVault status.
 func Storage(w io.Writer, storage collect.Storage) error {
-	if _, err := fmt.Fprintf(w, "Disk       %s\n", storage.Model); err != nil {
+	if err := field(w, "Disk", storage.Model); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(w, "Capacity   %s / %s\n", formatGiB(storage.UsedBytes), formatGiB(storage.TotalBytes)); err != nil {
+	if err := field(w, "Capacity", fmt.Sprintf("%s / %s", formatGiB(storage.UsedBytes), formatGiB(storage.TotalBytes))); err != nil {
 		return err
 	}
 	if storage.FileVaultOn != nil {
@@ -275,9 +276,7 @@ func Storage(w io.Writer, storage collect.Storage) error {
 		if *storage.FileVaultOn {
 			fileVault = "on"
 		}
-		if _, err := fmt.Fprintf(w, "FileVault  %s\n", fileVault); err != nil {
-			return err
-		}
+		return field(w, "FileVault", fileVault)
 	}
 	return nil
 }
@@ -291,29 +290,26 @@ func Power(w io.Writer, power collect.Power) error {
 	if power.Charging {
 		state = "charging"
 	}
-	if _, err := fmt.Fprintf(w, "Battery    %d%%, %s\n", power.Percentage, state); err != nil {
+	if err := field(w, "Battery", fmt.Sprintf("%d%%, %s", power.Percentage, state)); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(w, "Cycles     %d\n", power.CycleCount); err != nil {
+	if err := field(w, "Cycles", fmt.Sprintf("%d", power.CycleCount)); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(w, "Health     %d%%\n", power.HealthPercent); err != nil {
+	if err := field(w, "Health", fmt.Sprintf("%d%%", power.HealthPercent)); err != nil {
 		return err
 	}
 	if power.ThermalState == "" {
 		return nil
 	}
-	if _, err := fmt.Fprintf(w, "Thermal    %s\n", power.ThermalState); err != nil {
+	if err := field(w, "Thermal", power.ThermalState); err != nil {
 		return err
 	}
 	lowPowerMode := "off"
 	if power.LowPowerMode {
 		lowPowerMode = "on"
 	}
-	if _, err := fmt.Fprintf(w, "Low Power Mode  %s\n", lowPowerMode); err != nil {
-		return err
-	}
-	return nil
+	return field(w, "Low Power Mode", lowPowerMode)
 }
 
 // IO writes one line per network interface. This is the only I/O fact

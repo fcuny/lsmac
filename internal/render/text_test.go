@@ -155,8 +155,8 @@ func TestOSRosettaInstalled(t *testing.T) {
 	if err := OS(&buf, osInfo); err != nil {
 		t.Fatalf("OS() error = %v", err)
 	}
-	if !strings.Contains(buf.String(), "Rosetta    installed") {
-		t.Errorf("OS() output = %q, want %q", buf.String(), "Rosetta    installed")
+	if !strings.Contains(buf.String(), "Rosetta        installed") {
+		t.Errorf("OS() output = %q, want %q", buf.String(), "Rosetta        installed")
 	}
 }
 
@@ -187,7 +187,7 @@ func TestFirmware(t *testing.T) {
 	}
 
 	out := buf.String()
-	for _, want := range []string{"mBoot-20457.1.29", "Secure Boot  enabled", "SIP        enabled"} {
+	for _, want := range []string{"mBoot-20457.1.29", "Secure Boot    enabled", "SIP            enabled"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Firmware() output = %q, want it to contain %q", out, want)
 		}
@@ -203,7 +203,7 @@ func TestFirmwareDisabled(t *testing.T) {
 	}
 
 	out := buf.String()
-	for _, want := range []string{"Secure Boot  disabled", "SIP        disabled"} {
+	for _, want := range []string{"Secure Boot    disabled", "SIP            disabled"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Firmware() output = %q, want it to contain %q", out, want)
 		}
@@ -292,7 +292,7 @@ func TestMemory(t *testing.T) {
 	}
 
 	out := buf.String()
-	for _, want := range []string{"13.2 GiB / 16 GiB", "Type       LPDDR5", "Bandwidth  100 GB/s", "Pressure   normal"} {
+	for _, want := range []string{"13.2 GiB / 16 GiB", "Type           LPDDR5", "Bandwidth      100 GB/s", "Pressure       normal"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Memory() output = %q, want it to contain %q", out, want)
 		}
@@ -346,7 +346,7 @@ func TestStorage(t *testing.T) {
 	}
 
 	out := buf.String()
-	for _, want := range []string{"APPLE SSD AP1024Z", "FileVault  on"} {
+	for _, want := range []string{"APPLE SSD AP1024Z", "FileVault      on"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Storage() output = %q, want it to contain %q", out, want)
 		}
@@ -361,8 +361,8 @@ func TestStorageFileVaultOff(t *testing.T) {
 	if err := Storage(&buf, storage); err != nil {
 		t.Fatalf("Storage() error = %v", err)
 	}
-	if !strings.Contains(buf.String(), "FileVault  off") {
-		t.Errorf("Storage() output = %q, want %q", buf.String(), "FileVault  off")
+	if !strings.Contains(buf.String(), "FileVault      off") {
+		t.Errorf("Storage() output = %q, want %q", buf.String(), "FileVault      off")
 	}
 }
 
@@ -394,7 +394,7 @@ func TestPower(t *testing.T) {
 	}
 
 	out := buf.String()
-	for _, want := range []string{"80%, discharging", "Cycles     201", "Health     93%", "Thermal    nominal", "Low Power Mode  off"} {
+	for _, want := range []string{"80%, discharging", "Cycles         201", "Health         93%", "Thermal        nominal", "Low Power Mode off"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Power() output = %q, want it to contain %q", out, want)
 		}
@@ -410,7 +410,7 @@ func TestPowerChargingAndLowPowerMode(t *testing.T) {
 	}
 
 	out := buf.String()
-	for _, want := range []string{"50%, charging", "Low Power Mode  on"} {
+	for _, want := range []string{"50%, charging", "Low Power Mode on"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Power() output = %q, want it to contain %q", out, want)
 		}

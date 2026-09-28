@@ -22,29 +22,32 @@ It targets Apple Silicon Macs only, reads everything through `sysctl` and
 
 ```
 $ lsmac
-OS         macOS 27.0 Golden Gate (26A428)
-Darwin     27.0.0
-Uptime     13 days, 16 hours
-Rosetta    not installed
-Machine    MacBook Air (M2, 2022) (Mac14,2)
-SKU        MN703LL/A
-Firmware   mBoot-20457.1.29
-Secure Boot  enabled
-SIP        enabled
-Chip       Apple M2 (T8112)
-Process    5-nanometer (2nd generation)
-CPU        8 cores: 4P + 4E
-GPU        10 cores
-Memory     11.0 GiB / 16 GiB
-Type       LPDDR5
-Bandwidth  100 GB/s
-Pressure   normal
-Disk       APPLE SSD AP1024Z
-Capacity   404.4 GiB / 926.4 GiB
-Battery    78%, discharging
-Cycles     201
-Health     93%
+OS             macOS 27.0 Golden Gate (26A428)
+Darwin         27.0.0
+Uptime         13 days, 18 hours
+Rosetta        not installed
+Machine        MacBook Air (M2, 2022) (Mac14,2)
+SKU            MN703LL/A
+Firmware       mBoot-20457.1.29
+Secure Boot    enabled
+SIP            enabled
+Chip           Apple M2 (T8112)
+Process        5-nanometer (2nd generation)
+CPU            8 cores: 4P + 4E
+GPU            10 cores
+Memory         11.0 GiB / 16 GiB
+Type           LPDDR5
+Bandwidth      100 GB/s
+Pressure       normal
+Disk           APPLE SSD AP1024Z
+Capacity       404.4 GiB / 926.4 GiB
+Battery        76%, discharging
+Cycles         201
+Health         92%
 ```
+
+Every field label is padded to the same column, so values always line up
+regardless of label length (down to "Low Power Mode", the longest one).
 
 A section that doesn't apply to the machine it runs on (no battery on a Mac
 mini, for instance) is left out, never printed as "N/A". A section whose
