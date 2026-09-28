@@ -14,10 +14,9 @@ import (
 func TestChip(t *testing.T) {
 	var buf bytes.Buffer
 	chip := chips.Chip{
-		ID:                 "T8112",
-		MarketingName:      "Apple M2",
-		ProcessNode:        "5-nanometer (2nd generation)",
-		MemoryBandwidthGBs: 100,
+		ID:            "T8112",
+		MarketingName: "Apple M2",
+		ProcessNode:   "5-nanometer (2nd generation)",
 	}
 
 	if err := Chip(&buf, chip); err != nil {
@@ -25,10 +24,13 @@ func TestChip(t *testing.T) {
 	}
 
 	out := buf.String()
-	for _, want := range []string{"Apple M2 (T8112)", "5-nanometer (2nd generation)", "100 GB/s"} {
+	for _, want := range []string{"Apple M2 (T8112)", "5-nanometer (2nd generation)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Chip() output = %q, want it to contain %q", out, want)
 		}
+	}
+	if strings.Contains(out, "GB/s") {
+		t.Errorf("Chip() output = %q, want no bandwidth line (that's the Memory section's job now)", out)
 	}
 }
 
@@ -272,6 +274,179 @@ func TestWrapFeaturesWrapsLongLists(t *testing.T) {
 	for _, f := range features {
 		if !strings.Contains(got, f) {
 			t.Errorf("wrapFeatures() output missing %q", f)
+		}
+	}
+}
+
+func TestMemory(t *testing.T) {
+	var buf bytes.Buffer
+	mem := collect.Memory{
+		TotalBytes: 16 << 30,
+		UsedBytes:  14173412454, // ~13.2 GiB
+		Type:       "LPDDR5",
+		Pressure:   "normal",
+	}
+
+	if err := Memory(&buf, mem, 100); err != nil {
+		t.Fatalf("Memory() error = %v", err)
+	}
+
+	out := buf.String()
+	for _, want := range []string{"13.2 GiB / 16 GiB", "Type       LPDDR5", "Bandwidth  100 GB/s", "Pressure   normal"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Memory() output = %q, want it to contain %q", out, want)
+		}
+	}
+}
+
+func TestMemoryOmitsUnknownFields(t *testing.T) {
+	var buf bytes.Buffer
+	mem := collect.Memory{TotalBytes: 16 << 30, UsedBytes: 8 << 30, Pressure: "normal"}
+
+	if err := Memory(&buf, mem, 0); err != nil {
+		t.Fatalf("Memory() error = %v", err)
+	}
+
+	out := buf.String()
+	if strings.Contains(out, "Type") || strings.Contains(out, "Bandwidth") {
+		t.Errorf("Memory() output = %q, want no Type/Bandwidth lines when unknown", out)
+	}
+}
+
+func TestFormatGiB(t *testing.T) {
+	tests := []struct {
+		n    uint64
+		want string
+	}{
+		{16 << 30, "16 GiB"},
+		{8 << 30, "8 GiB"},
+	}
+	for _, tt := range tests {
+		if got := formatGiB(tt.n); got != tt.want {
+			t.Errorf("formatGiB(%d) = %q, want %q", tt.n, got, tt.want)
+		}
+	}
+	if got := formatGiB(13*(1<<30) + (1 << 29)); got != "13.5 GiB" {
+		t.Errorf("formatGiB(13.5 GiB) = %q, want %q", got, "13.5 GiB")
+	}
+}
+
+func TestStorage(t *testing.T) {
+	var buf bytes.Buffer
+	fileVaultOn := true
+	storage := collect.Storage{
+		Model:       "APPLE SSD AP1024Z",
+		TotalBytes:  994662584320,
+		UsedBytes:   434191556608,
+		FileVaultOn: &fileVaultOn,
+	}
+
+	if err := Storage(&buf, storage); err != nil {
+		t.Fatalf("Storage() error = %v", err)
+	}
+
+	out := buf.String()
+	for _, want := range []string{"APPLE SSD AP1024Z", "FileVault  on"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Storage() output = %q, want it to contain %q", out, want)
+		}
+	}
+}
+
+func TestStorageFileVaultOff(t *testing.T) {
+	var buf bytes.Buffer
+	fileVaultOff := false
+	storage := collect.Storage{Model: "APPLE SSD AP1024Z", TotalBytes: 1000, UsedBytes: 500, FileVaultOn: &fileVaultOff}
+
+	if err := Storage(&buf, storage); err != nil {
+		t.Fatalf("Storage() error = %v", err)
+	}
+	if !strings.Contains(buf.String(), "FileVault  off") {
+		t.Errorf("Storage() output = %q, want %q", buf.String(), "FileVault  off")
+	}
+}
+
+func TestStorageFileVaultOmittedWhenNotChecked(t *testing.T) {
+	var buf bytes.Buffer
+	storage := collect.Storage{Model: "APPLE SSD AP1024Z", TotalBytes: 1000, UsedBytes: 500}
+
+	if err := Storage(&buf, storage); err != nil {
+		t.Fatalf("Storage() error = %v", err)
+	}
+	if strings.Contains(buf.String(), "FileVault") {
+		t.Errorf("Storage() output = %q, want no FileVault line when FileVaultOn is nil", buf.String())
+	}
+}
+
+func TestPower(t *testing.T) {
+	var buf bytes.Buffer
+	power := collect.Power{
+		Percentage:    80,
+		Charging:      false,
+		CycleCount:    201,
+		HealthPercent: 93,
+		ThermalState:  "nominal",
+		LowPowerMode:  false,
+	}
+
+	if err := Power(&buf, power); err != nil {
+		t.Fatalf("Power() error = %v", err)
+	}
+
+	out := buf.String()
+	for _, want := range []string{"80%, discharging", "Cycles     201", "Health     93%", "Thermal    nominal", "Low Power Mode  off"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Power() output = %q, want it to contain %q", out, want)
+		}
+	}
+}
+
+func TestPowerChargingAndLowPowerMode(t *testing.T) {
+	var buf bytes.Buffer
+	power := collect.Power{Percentage: 50, Charging: true, ThermalState: "nominal", LowPowerMode: true}
+
+	if err := Power(&buf, power); err != nil {
+		t.Fatalf("Power() error = %v", err)
+	}
+
+	out := buf.String()
+	for _, want := range []string{"50%, charging", "Low Power Mode  on"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Power() output = %q, want it to contain %q", out, want)
+		}
+	}
+}
+
+func TestPowerOmitsThermalAndLowPowerModeWhenNotChecked(t *testing.T) {
+	var buf bytes.Buffer
+	power := collect.Power{Percentage: 50, Charging: true}
+
+	if err := Power(&buf, power); err != nil {
+		t.Fatalf("Power() error = %v", err)
+	}
+
+	out := buf.String()
+	if strings.Contains(out, "Thermal") || strings.Contains(out, "Low Power Mode") {
+		t.Errorf("Power() output = %q, want no Thermal/Low Power Mode lines when ThermalState is empty", out)
+	}
+}
+
+func TestIO(t *testing.T) {
+	var buf bytes.Buffer
+	ioInfo := collect.IO{Interfaces: []collect.NetworkInterface{
+		{Name: "lo0", IsUp: true, IsLoopback: true},
+		{Name: "en0", HardwareAddr: "c4:35:d9:89:5c:6c", IsUp: true},
+		{Name: "en1", IsUp: false},
+	}}
+
+	if err := IO(&buf, ioInfo); err != nil {
+		t.Fatalf("IO() error = %v", err)
+	}
+
+	out := buf.String()
+	for _, want := range []string{"lo0", "en0        up   c4:35:d9:89:5c:6c", "en1        down"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("IO() output = %q, want it to contain %q", out, want)
 		}
 	}
 }

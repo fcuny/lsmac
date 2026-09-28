@@ -4,12 +4,19 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 )
 
 const ioregPath = "/usr/sbin/ioreg"
+
+// ErrNotFound wraps the error IORegProperties/IORegNodeProperties return
+// when nothing matched - e.g. no AppleSmartBattery on a Mac without a
+// battery. Callers use errors.Is to tell "this section doesn't apply" apart
+// from a real failure.
+var ErrNotFound = errors.New("no matching object found")
 
 // propertyLine matches a single `"key" = value` line from ioreg's default
 // (non-plist) property dump, e.g. `"gpu-core-count" = 10`.
@@ -29,17 +36,18 @@ var propertyLine = func(line string) (key, value string, ok bool) {
 	return key, strings.TrimSpace(rest), true
 }
 
-// scanObjectProperties reads ioreg's default (non-plist) object dump - an
-// object header line, then a `{ ... }` block of scalar properties - and
-// returns the properties of the first (only expected) object, keyed by
-// property name. Values keep their raw ioreg formatting; use IntProperty /
-// StringProperty / DataProperty to decode them.
 // maxPropertyLineBytes raises bufio.Scanner's default 64KB line limit.
 // Some device-tree properties are large binary blobs printed as a single
 // hex-encoded line - e.g. the "chosen" node's IOProgressBackbuffer (a boot
 // progress image) can run past 100KB - even though nothing we read cares
 // about their content.
 const maxPropertyLineBytes = 8 * 1024 * 1024
+
+// scanObjectProperties reads ioreg's default (non-plist) object dump - an
+// object header line, then a `{ ... }` block of scalar properties - and
+// returns the properties of the first (only expected) object, keyed by
+// property name. Values keep their raw ioreg formatting; use IntProperty /
+// StringProperty / DataProperty to decode them.
 
 func scanObjectProperties(output []byte, errContext string) (map[string]string, error) {
 	props := make(map[string]string)
@@ -70,7 +78,7 @@ func scanObjectProperties(output []byte, errContext string) (map[string]string, 
 	}
 
 	if !inObject {
-		return nil, fmt.Errorf("%s: no matching object found", errContext)
+		return nil, fmt.Errorf("%s: %w", errContext, ErrNotFound)
 	}
 	return props, nil
 }
@@ -110,13 +118,35 @@ func IntProperty(props map[string]string, key string) (int64, error) {
 	return n, nil
 }
 
+// BoolProperty decodes a raw ioreg boolean property value: the bare words
+// `Yes` / `No` ioreg prints for OSBoolean values.
+func BoolProperty(props map[string]string, key string) (bool, error) {
+	raw, ok := props[key]
+	if !ok {
+		return false, fmt.Errorf("property %q not found", key)
+	}
+	switch raw {
+	case "Yes":
+		return true, nil
+	case "No":
+		return false, nil
+	default:
+		return false, fmt.Errorf("property %q: not a boolean: %q", key, raw)
+	}
+}
+
 // StringProperty decodes a raw ioreg property value as a string, stripping
-// the surrounding quotes ioreg prints for string values.
+// the surrounding quotes ioreg prints for OSString/CFString values
+// (`"foo"`) or, for a data property ioreg has printed as readable text
+// instead of hex because its bytes look like a clean C string, both the
+// angle brackets and the quotes (`<"foo">`) - e.g. the device tree's
+// dram-type property.
 func StringProperty(props map[string]string, key string) (string, error) {
 	raw, ok := props[key]
 	if !ok {
 		return "", fmt.Errorf("property %q not found", key)
 	}
+	raw = strings.TrimSuffix(strings.TrimPrefix(raw, "<"), ">")
 	return strings.Trim(raw, `"`), nil
 }
 

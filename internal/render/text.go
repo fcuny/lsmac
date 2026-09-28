@@ -14,9 +14,9 @@ import (
 	"fcuny.net/lsmac/internal/models"
 )
 
-// Chip writes the chip identity line, plus process node and memory
-// bandwidth when known. name falls back to the raw chip ID when the chip
-// is not in the internal/chips table.
+// Chip writes the chip identity line, plus process node when known. name
+// falls back to the raw chip ID when the chip is not in the internal/chips
+// table. Memory bandwidth is part of the Memory section, not here.
 func Chip(w io.Writer, chip chips.Chip) error {
 	name := chip.MarketingName
 	if name == "" {
@@ -27,11 +27,6 @@ func Chip(w io.Writer, chip chips.Chip) error {
 	}
 	if chip.ProcessNode != "" {
 		if _, err := fmt.Fprintf(w, "Process    %s\n", chip.ProcessNode); err != nil {
-			return err
-		}
-	}
-	if chip.MemoryBandwidthGBs > 0 {
-		if _, err := fmt.Fprintf(w, "Bandwidth  %d GB/s\n", chip.MemoryBandwidthGBs); err != nil {
 			return err
 		}
 	}
@@ -232,4 +227,113 @@ func wrapFeatures(features []string) string {
 		lineLen += len(f)
 	}
 	return b.String()
+}
+
+// Memory writes used/total, RAM type, bandwidth (from the chip table), and
+// memory pressure. Type and bandwidth lines are omitted when unknown.
+func Memory(w io.Writer, mem collect.Memory, bandwidthGBs uint32) error {
+	if _, err := fmt.Fprintf(w, "Memory     %s / %s\n", formatGiB(mem.UsedBytes), formatGiB(mem.TotalBytes)); err != nil {
+		return err
+	}
+	if mem.Type != "" {
+		if _, err := fmt.Fprintf(w, "Type       %s\n", mem.Type); err != nil {
+			return err
+		}
+	}
+	if bandwidthGBs > 0 {
+		if _, err := fmt.Fprintf(w, "Bandwidth  %d GB/s\n", bandwidthGBs); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintf(w, "Pressure   %s\n", mem.Pressure); err != nil {
+		return err
+	}
+	return nil
+}
+
+// formatGiB renders a byte count in GiB, dropping the decimal point when
+// it's an exact multiple (which totals like hw.memsize always are).
+func formatGiB(n uint64) string {
+	const gib = 1 << 30
+	if n%gib == 0 {
+		return fmt.Sprintf("%d GiB", n/gib)
+	}
+	return fmt.Sprintf("%.1f GiB", float64(n)/gib)
+}
+
+// Storage writes the internal disk model, used/total capacity, and
+// FileVault status.
+func Storage(w io.Writer, storage collect.Storage) error {
+	if _, err := fmt.Fprintf(w, "Disk       %s\n", storage.Model); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "Capacity   %s / %s\n", formatGiB(storage.UsedBytes), formatGiB(storage.TotalBytes)); err != nil {
+		return err
+	}
+	if storage.FileVaultOn != nil {
+		fileVault := "off"
+		if *storage.FileVaultOn {
+			fileVault = "on"
+		}
+		if _, err := fmt.Fprintf(w, "FileVault  %s\n", fileVault); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Power writes battery charge/charging state, cycle count, health,
+// thermal state, and Low Power Mode. Call only when collect.CollectPower
+// didn't return collect.ErrNoBattery - a Mac without a battery has no
+// Power section at all, never one printed with zeroed fields.
+func Power(w io.Writer, power collect.Power) error {
+	state := "discharging"
+	if power.Charging {
+		state = "charging"
+	}
+	if _, err := fmt.Fprintf(w, "Battery    %d%%, %s\n", power.Percentage, state); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "Cycles     %d\n", power.CycleCount); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "Health     %d%%\n", power.HealthPercent); err != nil {
+		return err
+	}
+	if power.ThermalState == "" {
+		return nil
+	}
+	if _, err := fmt.Fprintf(w, "Thermal    %s\n", power.ThermalState); err != nil {
+		return err
+	}
+	lowPowerMode := "off"
+	if power.LowPowerMode {
+		lowPowerMode = "on"
+	}
+	if _, err := fmt.Fprintf(w, "Low Power Mode  %s\n", lowPowerMode); err != nil {
+		return err
+	}
+	return nil
+}
+
+// IO writes one line per network interface. This is the only I/O fact
+// currently collected - see the comment on collect.IO for what's deferred
+// and why.
+func IO(w io.Writer, ioInfo collect.IO) error {
+	for _, iface := range ioInfo.Interfaces {
+		state := "down"
+		if iface.IsUp {
+			state = "up"
+		}
+		if iface.HardwareAddr != "" {
+			if _, err := fmt.Fprintf(w, "%-10s %-4s %s\n", iface.Name, state, iface.HardwareAddr); err != nil {
+				return err
+			}
+			continue
+		}
+		if _, err := fmt.Fprintf(w, "%-10s %s\n", iface.Name, state); err != nil {
+			return err
+		}
+	}
+	return nil
 }

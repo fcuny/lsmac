@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -31,7 +32,7 @@ func (s *sectionFlag) Set(value string) error {
 
 func main() {
 	var sections sectionFlag
-	flag.Var(&sections, "section", "print the detailed view of one section (repeatable): os, machine, firmware, chip, cpu, gpu")
+	flag.Var(&sections, "section", "print the detailed view of one section (repeatable): os, machine, firmware, chip, cpu, gpu, memory, storage, power, io")
 	flag.Parse()
 
 	cmd := source.NewCachingCommand(source.RealCommand{})
@@ -81,8 +82,9 @@ func main() {
 		ok = true
 	}
 
-	if chip, err := collectChip(cmd); err != nil {
-		fmt.Fprintf(os.Stderr, "lsmac: chip: %v\n", err)
+	chip, chipErr := collectChip(cmd)
+	if chipErr != nil {
+		fmt.Fprintf(os.Stderr, "lsmac: chip: %v\n", chipErr)
 	} else {
 		if err := render.Chip(os.Stdout, chip); err != nil {
 			fmt.Fprintf(os.Stderr, "lsmac: %v\n", err)
@@ -103,6 +105,39 @@ func main() {
 		fmt.Fprintf(os.Stderr, "lsmac: gpu: %v\n", err)
 	} else {
 		if err := render.GPU(os.Stdout, gpu); err != nil {
+			fmt.Fprintf(os.Stderr, "lsmac: %v\n", err)
+		}
+		ok = true
+	}
+
+	if mem, err := collect.CollectMemory(cmd); err != nil {
+		fmt.Fprintf(os.Stderr, "lsmac: memory: %v\n", err)
+	} else {
+		var bandwidth uint32
+		if chipErr == nil {
+			bandwidth = chip.MemoryBandwidthGBs
+		}
+		if err := render.Memory(os.Stdout, mem, bandwidth); err != nil {
+			fmt.Fprintf(os.Stderr, "lsmac: %v\n", err)
+		}
+		ok = true
+	}
+
+	if storage, err := collect.CollectStorage(cmd, source.RealFilesystemStats{}, false); err != nil {
+		fmt.Fprintf(os.Stderr, "lsmac: storage: %v\n", err)
+	} else {
+		if err := render.Storage(os.Stdout, storage); err != nil {
+			fmt.Fprintf(os.Stderr, "lsmac: %v\n", err)
+		}
+		ok = true
+	}
+
+	if power, err := collect.CollectPower(cmd, false); err != nil {
+		if !errors.Is(err, collect.ErrNoBattery) {
+			fmt.Fprintf(os.Stderr, "lsmac: power: %v\n", err)
+		}
+	} else {
+		if err := render.Power(os.Stdout, power); err != nil {
 			fmt.Fprintf(os.Stderr, "lsmac: %v\n", err)
 		}
 		ok = true
@@ -174,6 +209,34 @@ func runSection(cmd source.SystemCommand, fc source.FileChecker, name string) er
 			return err
 		}
 		return render.GPU(os.Stdout, gpu)
+	case "memory":
+		mem, err := collect.CollectMemory(cmd)
+		if err != nil {
+			return err
+		}
+		var bandwidth uint32
+		if chip, err := collectChip(cmd); err == nil {
+			bandwidth = chip.MemoryBandwidthGBs
+		}
+		return render.Memory(os.Stdout, mem, bandwidth)
+	case "storage":
+		storage, err := collect.CollectStorage(cmd, source.RealFilesystemStats{}, true)
+		if err != nil {
+			return err
+		}
+		return render.Storage(os.Stdout, storage)
+	case "power":
+		power, err := collect.CollectPower(cmd, true)
+		if err != nil {
+			return err
+		}
+		return render.Power(os.Stdout, power)
+	case "io":
+		ioInfo, err := collect.CollectIO(source.RealNetworkInterfaces{})
+		if err != nil {
+			return err
+		}
+		return render.IO(os.Stdout, ioInfo)
 	default:
 		return fmt.Errorf("unknown section %q", name)
 	}
