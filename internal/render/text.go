@@ -6,6 +6,7 @@ package render
 import (
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"fcuny.net/lsmac/internal/chips"
@@ -150,4 +151,85 @@ func Firmware(w io.Writer, fw collect.Firmware) error {
 		return err
 	}
 	return nil
+}
+
+// CPUDetail writes the detailed `--section cpu` view: chip identity,
+// family, page size, one block per performance-level cluster with its core
+// counts and cache sizes, and the active ARM architecture features.
+//
+// Maximum frequency per cluster is not shown - see the comment on
+// collect.CPUDetail for why.
+func CPUDetail(w io.Writer, chip chips.Chip, detail collect.CPUDetail) error {
+	name := chip.MarketingName
+	if name == "" {
+		name = chip.ID
+	}
+	if _, err := fmt.Fprintf(w, "CPU\n  Chip              %s (%s)\n  Family            %s\n  Page size         %s\n",
+		name, chip.ID, detail.Family, formatBytes(detail.PageSize)); err != nil {
+		return err
+	}
+
+	for _, c := range detail.Clusters {
+		if _, err := fmt.Fprintf(w, "\n  %-17s %d %s  ·  %d %s\n",
+			c.Name, c.PhysicalCores, plural(int(c.PhysicalCores), "core"),
+			c.Clusters, plural(int(c.Clusters), "cluster")); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "    L1i / L1d       %s / %s per core\n",
+			formatBytes(c.L1ICacheSize), formatBytes(c.L1DCacheSize)); err != nil {
+			return err
+		}
+		l2 := fmt.Sprintf("%s per cluster", formatBytes(c.L2CacheSize))
+		if c.CoresPerCluster > 0 {
+			l2 += fmt.Sprintf(" (%d cores per L2)", c.CoresPerCluster)
+		}
+		if _, err := fmt.Fprintf(w, "    L2              %s\n", l2); err != nil {
+			return err
+		}
+	}
+
+	if len(detail.Features) > 0 {
+		if _, err := fmt.Fprintf(w, "\n  Features          %s\n", wrapFeatures(detail.Features)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// formatBytes renders a byte count as whole KiB or MiB. Every size lsmac
+// deals with (page sizes, cache sizes) is an exact multiple of one or the
+// other, so plain integer division never loses precision here.
+func formatBytes(n uint32) string {
+	const ki, mi = 1024, 1024 * 1024
+	if n >= mi {
+		return fmt.Sprintf("%d MiB", n/mi)
+	}
+	return fmt.Sprintf("%d KiB", n/ki)
+}
+
+// featuresWrapWidth roughly matches the indentation used for continuation
+// lines under the "Features" label.
+const featuresWrapWidth = 60
+
+// wrapFeatures joins feature names with spaces, wrapping continuation
+// lines to align under the "Features" label.
+func wrapFeatures(features []string) string {
+	const indent = "                    "
+	var b strings.Builder
+	lineLen := 0
+	for i, f := range features {
+		if i > 0 {
+			if lineLen+1+len(f) > featuresWrapWidth {
+				b.WriteString("\n")
+				b.WriteString(indent)
+				lineLen = 0
+			} else {
+				b.WriteString(" ")
+				lineLen++
+			}
+		}
+		b.WriteString(f)
+		lineLen += len(f)
+	}
+	return b.String()
 }

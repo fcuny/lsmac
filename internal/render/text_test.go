@@ -207,3 +207,71 @@ func TestFirmwareDisabled(t *testing.T) {
 		}
 	}
 }
+
+func TestCPUDetail(t *testing.T) {
+	var buf bytes.Buffer
+	chip := chips.Chip{ID: "T8112", MarketingName: "Apple M2"}
+	detail := collect.CPUDetail{
+		Family:   "0xDA33D83D",
+		PageSize: 16384,
+		Clusters: []collect.CPUCluster{
+			{Name: "Performance", PhysicalCores: 4, Clusters: 1, CoresPerCluster: 4, L1ICacheSize: 196608, L1DCacheSize: 131072, L2CacheSize: 16777216},
+			{Name: "Efficiency", PhysicalCores: 4, Clusters: 1, CoresPerCluster: 4, L1ICacheSize: 131072, L1DCacheSize: 65536, L2CacheSize: 4194304},
+		},
+		Features: []string{"CRC32", "FlagM", "BTI"},
+	}
+
+	if err := CPUDetail(&buf, chip, detail); err != nil {
+		t.Fatalf("CPUDetail() error = %v", err)
+	}
+
+	out := buf.String()
+	for _, want := range []string{
+		"Apple M2 (T8112)",
+		"0xDA33D83D",
+		"16 KiB",
+		"Performance       4 cores  ·  1 cluster",
+		"192 KiB / 128 KiB per core",
+		"16 MiB per cluster (4 cores per L2)",
+		"Efficiency        4 cores  ·  1 cluster",
+		"CRC32 FlagM BTI",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("CPUDetail() output = %q, want it to contain %q", out, want)
+		}
+	}
+}
+
+func TestFormatBytes(t *testing.T) {
+	tests := []struct {
+		n    uint32
+		want string
+	}{
+		{16384, "16 KiB"},
+		{196608, "192 KiB"},
+		{16777216, "16 MiB"},
+		{4194304, "4 MiB"},
+	}
+	for _, tt := range tests {
+		if got := formatBytes(tt.n); got != tt.want {
+			t.Errorf("formatBytes(%d) = %q, want %q", tt.n, got, tt.want)
+		}
+	}
+}
+
+func TestWrapFeaturesWrapsLongLists(t *testing.T) {
+	features := []string{
+		"CRC32", "FlagM", "FlagM2", "FHM", "DotProd", "SHA3", "RDM", "LSE",
+		"SHA256", "SHA512", "SHA1", "AES", "PMULL", "SB", "FRINTTS",
+	}
+	got := wrapFeatures(features)
+	if !strings.Contains(got, "\n") {
+		t.Errorf("wrapFeatures() = %q, want it to wrap onto more than one line", got)
+	}
+	// Every feature name must survive the wrap.
+	for _, f := range features {
+		if !strings.Contains(got, f) {
+			t.Errorf("wrapFeatures() output missing %q", f)
+		}
+	}
+}
