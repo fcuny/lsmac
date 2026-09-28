@@ -456,6 +456,53 @@ func TestPowerChargingAndLowPowerMode(t *testing.T) {
 	}
 }
 
+func TestPowerChargingWithAdapterWatts(t *testing.T) {
+	var buf bytes.Buffer
+	watts := uint16(94)
+	power := collect.Power{Percentage: 50, Charging: true, AdapterWatts: &watts}
+
+	if err := Power(&buf, power); err != nil {
+		t.Fatalf("Power() error = %v", err)
+	}
+
+	if !strings.Contains(buf.String(), "50%, charging via 94W") {
+		t.Errorf("Power() output = %q, want it to contain %q", buf.String(), "50%, charging via 94W")
+	}
+}
+
+// A Mac plugged in but not actively charging (typically already full) is a
+// real state, distinct from running on battery - must not say
+// "discharging".
+func TestPowerPluggedInNotCharging(t *testing.T) {
+	var buf bytes.Buffer
+	power := collect.Power{Percentage: 100, Charging: false, PluggedIn: true}
+
+	if err := Power(&buf, power); err != nil {
+		t.Fatalf("Power() error = %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "100%, plugged in") {
+		t.Errorf("Power() output = %q, want it to contain %q", out, "100%, plugged in")
+	}
+	if strings.Contains(out, "discharging") {
+		t.Errorf("Power() output = %q, want no \"discharging\" when plugged in", out)
+	}
+}
+
+func TestPowerDischargingWhenNotPluggedIn(t *testing.T) {
+	var buf bytes.Buffer
+	power := collect.Power{Percentage: 60, Charging: false, PluggedIn: false}
+
+	if err := Power(&buf, power); err != nil {
+		t.Fatalf("Power() error = %v", err)
+	}
+
+	if !strings.Contains(buf.String(), "60%, discharging") {
+		t.Errorf("Power() output = %q, want it to contain %q", buf.String(), "60%, discharging")
+	}
+}
+
 func TestPowerOmitsThermalAndLowPowerModeWhenNotChecked(t *testing.T) {
 	var buf bytes.Buffer
 	power := collect.Power{Percentage: 50, Charging: true}
