@@ -28,6 +28,10 @@
 //     the entry instead of guessed into the field. M3 Max does not have
 //     this problem: its two configurations have distinct chip IDs
 //     (T6031/T6034), so each gets its own entry with its own figure.
+//   - MemoryBandwidthGBs is also 0 for the M6: Apple's Mac mini tech-specs
+//     page lists 153GB/s for two of its three configurations and 170GB/s
+//     for the third, tied to unified memory capacity rather than a
+//     distinct chip ID, so again neither figure is picked over the other.
 //   - Media.AV1Decode is only set true when Apple's tech-specs page
 //     explicitly lists AV1 decode; false means "not confirmed", not
 //     "confirmed absent".
@@ -318,6 +322,36 @@ var table = map[string]Chip{
 		NeuralEngineCores:  32,
 		// https://support.apple.com/en-us/128107 (Mac Studio M5 Max/Ultra tech specs)
 		Media: Media{VideoDecodeEngines: 2, VideoEncodeEngines: 4, ProResEngines: 4, AV1Decode: true},
+	},
+
+	// M6 generation. Announced 2026-08-25, released 2026-09-22 in the Mac
+	// mini; no Pro/Max/Ultra variant as of this table's writing (2026-09-28)
+	// -- Apple has said M6 Pro/Max are being skipped in favor of a later M7
+	// generation.
+	// Chip ID T8152: community source https://theapplewiki.com/wiki/M6.
+	"T8152": {
+		ID:            "T8152",
+		MarketingName: "Apple M6",
+		// https://www.apple.com/newsroom/2026/08/apple-introduces-m6-and-m5-ultra-for-a-big-leap-in-performance-and-ai-compute/
+		// "built using cutting-edge 2 nm process technology" - first Apple
+		// silicon chip on TSMC's 2nm process.
+		ProcessNode: "2-nanometer",
+		// MemoryBandwidthGBs left at 0: Apple's Mac mini tech-specs page
+		// (https://www.apple.com/mac-mini/specs/) lists 153GB/s for two of
+		// the three M6 configurations and 170GB/s for the third, tied to
+		// unified memory capacity, not a distinct chip ID.
+		//
+		// NeuralEngineCores: Apple's own wording is "Dual 16-core Neural
+		// Engine" (same source), not a plain single core count like every
+		// earlier generation. Read literally as two 16-core Neural Engine
+		// units, consistent with Apple's "up to 2x the peak compute of
+		// previous generations" framing for the same feature.
+		NeuralEngineCores: 32,
+		// https://www.apple.com/mac-mini/specs/: "Hardware-accelerated
+		// H.264, HEVC, ProRes, and ProRes RAW", one video decode engine,
+		// one video encode engine, one ProRes encode/decode engine, AV1
+		// decode.
+		Media: Media{VideoDecodeEngines: 1, VideoEncodeEngines: 1, ProResEngines: 1, AV1Decode: true},
 	},
 }
 

@@ -28,6 +28,16 @@ func TestLookup(t *testing.T) {
 				NeuralEngineCores: 16,
 			},
 		},
+		{
+			"T8152",
+			Chip{
+				ID:                "T8152",
+				MarketingName:     "Apple M6",
+				ProcessNode:       "2-nanometer",
+				NeuralEngineCores: 32,
+				Media:             Media{VideoDecodeEngines: 1, VideoEncodeEngines: 1, ProResEngines: 1, AV1Decode: true},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -72,10 +82,11 @@ func TestLookupM3MaxDieVariants(t *testing.T) {
 	}
 }
 
-// Ambiguous-bandwidth chips (single chip ID, multiple GPU-core-count SKUs)
-// must be left at 0 rather than guessed.
+// Ambiguous-bandwidth chips (single chip ID, multiple SKUs at different
+// bandwidths - by GPU core count for the Max chips, by memory capacity for
+// the M6) must be left at 0 rather than guessed.
 func TestLookupAmbiguousBandwidthLeftUnset(t *testing.T) {
-	for _, id := range []string{"T6041", "T6051"} {
+	for _, id := range []string{"T6041", "T6051", "T8152"} {
 		c, ok := Lookup(id)
 		if !ok {
 			t.Fatalf("Lookup(%q) not found", id)
