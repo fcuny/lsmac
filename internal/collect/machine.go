@@ -6,10 +6,10 @@ import "fcuny.net/lsmac/internal/source"
 // HardwareUUID are left empty unless showSerial is passed to CollectMachine,
 // so screenshots of the default output don't leak them.
 type Machine struct {
-	ModelIdentifier string // e.g. "Mac14,2"
-	SKU             string // e.g. "MN703LL/A": model-number + region-info
-	Serial          string
-	HardwareUUID    string
+	ModelIdentifier string `json:"modelIdentifier"` // e.g. "Mac14,2"
+	SKU             string `json:"sku"`             // e.g. "MN703LL/A": model-number + region-info
+	Serial          string `json:"serial,omitempty"`
+	HardwareUUID    string `json:"hardwareUUID,omitempty"`
 }
 
 // CollectMachine reads the model identifier via sysctl and the SKU,

@@ -10,10 +10,10 @@ import (
 
 // CPU holds the CPU facts collected for the SoC section.
 type CPU struct {
-	BrandName        string
-	TotalCores       uint16
-	PerformanceCores uint16
-	EfficiencyCores  uint16
+	BrandName        string `json:"brandName"`
+	TotalCores       uint16 `json:"totalCores"`
+	PerformanceCores uint16 `json:"performanceCores"`
+	EfficiencyCores  uint16 `json:"efficiencyCores"`
 }
 
 // CollectCPU reads CPU brand and core counts via sysctl.
@@ -59,13 +59,13 @@ func CollectCPU(cmd source.SystemCommand) (CPU, error) {
 // a chip with more tiers (e.g. the M6's extra "super" core) is handled
 // without a code change - CollectCPUDetail doesn't hardcode P/E.
 type CPUCluster struct {
-	Name            string // e.g. "Performance", "Efficiency" - from hw.perflevelN.name
-	PhysicalCores   uint16
-	Clusters        uint16 // L2-sharing groups: physicalcpu / cpusperl2
-	CoresPerCluster uint16 // hw.perflevelN.cpusperl2
-	L1ICacheSize    uint32 // bytes, per core
-	L1DCacheSize    uint32 // bytes, per core
-	L2CacheSize     uint32 // bytes, per cluster (not summed across clusters)
+	Name            string `json:"name"` // e.g. "Performance", "Efficiency" - from hw.perflevelN.name
+	PhysicalCores   uint16 `json:"physicalCores"`
+	Clusters        uint16 `json:"clusters"`        // L2-sharing groups: physicalcpu / cpusperl2
+	CoresPerCluster uint16 `json:"coresPerCluster"` // hw.perflevelN.cpusperl2
+	L1ICacheSize    uint32 `json:"l1iCacheSize"`    // bytes, per core
+	L1DCacheSize    uint32 `json:"l1dCacheSize"`    // bytes, per core
+	L2CacheSize     uint32 `json:"l2CacheSize"`     // bytes, per cluster (not summed across clusters)
 }
 
 // CPUDetail holds the facts for the detailed `--section cpu` view.
@@ -77,10 +77,10 @@ type CPUCluster struct {
 // cluster - a mapping that's specific to each chip generation and isn't
 // derivable from the property names themselves. That's out of scope here.
 type CPUDetail struct {
-	Family   string // e.g. "0xDA33D83D", from hw.cpufamily
-	PageSize uint32 // bytes, from hw.pagesize
-	Clusters []CPUCluster
-	Features []string // active hw.optional.arm.FEAT_* names, FEAT_ prefix stripped, in sysctl's own listing order
+	Family   string       `json:"family"`   // e.g. "0xDA33D83D", from hw.cpufamily
+	PageSize uint32       `json:"pageSize"` // bytes, from hw.pagesize
+	Clusters []CPUCluster `json:"clusters"`
+	Features []string     `json:"features"` // active hw.optional.arm.FEAT_* names, FEAT_ prefix stripped, in sysctl's own listing order
 }
 
 // CollectCPUDetail reads the per-cluster core/cache breakdown, CPU family,

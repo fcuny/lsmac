@@ -61,6 +61,9 @@ func TestCollectOS(t *testing.T) {
 	if got.Uptime <= 0 {
 		t.Errorf("Uptime = %v, want positive", got.Uptime)
 	}
+	if got.UptimeSeconds != got.Uptime.Seconds() {
+		t.Errorf("UptimeSeconds = %v, want %v (Uptime.Seconds())", got.UptimeSeconds, got.Uptime.Seconds())
+	}
 	if got.RosettaInstalled {
 		t.Error("RosettaInstalled = true, want false")
 	}

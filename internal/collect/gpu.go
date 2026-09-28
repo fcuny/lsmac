@@ -4,7 +4,7 @@ import "fcuny.net/lsmac/internal/source"
 
 // GPU holds the GPU facts collected for the SoC section.
 type GPU struct {
-	CoreCount uint16
+	CoreCount uint16 `json:"coreCount"`
 }
 
 // CollectGPU reads GPU core count from the AGXAccelerator IORegistry entry.

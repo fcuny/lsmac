@@ -8,10 +8,10 @@ import (
 
 // NetworkInterface describes one network interface.
 type NetworkInterface struct {
-	Name         string
-	HardwareAddr string // MAC address, empty when the interface doesn't have one
-	IsUp         bool
-	IsLoopback   bool
+	Name         string `json:"name"`
+	HardwareAddr string `json:"hardwareAddr,omitempty"` // MAC address, empty when the interface doesn't have one
+	IsUp         bool   `json:"isUp"`
+	IsLoopback   bool   `json:"isLoopback"`
 }
 
 // IO holds the facts collected for the I/O section.
@@ -25,7 +25,7 @@ type NetworkInterface struct {
 // system_profiler, is far too slow for the default path (SPAirPortDataType
 // alone took over 4 seconds in testing). Left as a follow-up.
 type IO struct {
-	Interfaces []NetworkInterface
+	Interfaces []NetworkInterface `json:"interfaces"`
 }
 
 // CollectIO lists network interfaces via the standard library.

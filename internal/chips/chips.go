@@ -44,20 +44,20 @@ import "strings"
 
 // Media describes a chip's video engine capabilities.
 type Media struct {
-	VideoDecodeEngines uint8
-	VideoEncodeEngines uint8
-	ProResEngines      uint8
-	AV1Decode          bool
+	VideoDecodeEngines uint8 `json:"videoDecodeEngines"`
+	VideoEncodeEngines uint8 `json:"videoEncodeEngines"`
+	ProResEngines      uint8 `json:"proResEngines"`
+	AV1Decode          bool  `json:"av1Decode"`
 }
 
 // Chip holds the published facts for one Apple Silicon chip.
 type Chip struct {
-	ID                 string
-	MarketingName      string
-	ProcessNode        string
-	MemoryBandwidthGBs uint32
-	NeuralEngineCores  uint16
-	Media              Media
+	ID                 string `json:"id"`
+	MarketingName      string `json:"marketingName,omitempty"`
+	ProcessNode        string `json:"processNode,omitempty"`
+	MemoryBandwidthGBs uint32 `json:"memoryBandwidthGBs,omitempty"`
+	NeuralEngineCores  uint16 `json:"neuralEngineCores,omitempty"`
+	Media              Media  `json:"media"`
 }
 
 // table is keyed by chip ID, upper-cased.

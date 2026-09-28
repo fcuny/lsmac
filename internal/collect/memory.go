@@ -10,16 +10,16 @@ import (
 
 // Memory holds the facts collected for the Memory section.
 type Memory struct {
-	TotalBytes uint64
+	TotalBytes uint64 `json:"totalBytes"`
 	// UsedBytes approximates macOS's own "Memory Used" figure as
 	// (active + wired + compressed) pages. Apple doesn't publish the exact
 	// formula Activity Monitor uses; this is the same approximation
 	// standard community tools use, not a guess at an unknown exact value.
-	UsedBytes       uint64
-	WiredBytes      uint64
-	CompressedBytes uint64
-	Type            string // e.g. "LPDDR5", from the device tree; empty if unknown
-	Pressure        string // "normal", "warning", or "critical"
+	UsedBytes       uint64 `json:"usedBytes"`
+	WiredBytes      uint64 `json:"wiredBytes"`
+	CompressedBytes uint64 `json:"compressedBytes"`
+	Type            string `json:"type,omitempty"` // e.g. "LPDDR5", from the device tree; empty if unknown
+	Pressure        string `json:"pressure"`       // "normal", "warning", or "critical"
 }
 
 // CollectMemory reads total memory via sysctl, page-level usage via

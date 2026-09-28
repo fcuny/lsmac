@@ -13,10 +13,10 @@ import (
 // lsmac's entire default-view time budget, so the default view skips it
 // and only `--section storage` pays for it.
 type Storage struct {
-	Model       string // internal SSD model, e.g. "APPLE SSD AP1024Z"
-	TotalBytes  uint64
-	UsedBytes   uint64
-	FileVaultOn *bool
+	Model       string `json:"model"` // internal SSD model, e.g. "APPLE SSD AP1024Z"
+	TotalBytes  uint64 `json:"totalBytes"`
+	UsedBytes   uint64 `json:"usedBytes"`
+	FileVaultOn *bool  `json:"fileVaultOn,omitempty"`
 }
 
 const fdesetupPath = "/usr/bin/fdesetup"

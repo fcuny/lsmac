@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"fcuny.net/lsmac/internal/chips"
@@ -15,10 +16,6 @@ import (
 	"fcuny.net/lsmac/internal/render"
 	"fcuny.net/lsmac/internal/source"
 )
-
-// showSerial gates Machine.Serial/HardwareUUID. Hardcoded off until the
-// --show-serial flag is wired up.
-const showSerial = false
 
 // sectionFlag collects repeated `--section NAME` occurrences.
 type sectionFlag []string
@@ -32,16 +29,23 @@ func (s *sectionFlag) Set(value string) error {
 
 func main() {
 	var sections sectionFlag
-	flag.Var(&sections, "section", "print the detailed view of one section (repeatable): os, machine, firmware, chip, cpu, gpu, memory, storage, power, io")
+	flag.Var(&sections, "section", "print the detailed view of one section (repeatable): "+strings.Join(validSectionNames, ", "))
+	jsonOutput := flag.Bool("json", false, "print structured JSON instead of text")
+	showSerial := flag.Bool("show-serial", false, "include serial number and hardware UUID (hidden by default)")
 	flag.Parse()
 
 	cmd := source.NewCachingCommand(source.RealCommand{})
 	fc := source.RealFileChecker{}
 
+	if *jsonOutput {
+		runJSON(cmd, fc, sections, *showSerial)
+		return
+	}
+
 	if len(sections) > 0 {
 		ok := true
 		for _, name := range sections {
-			if err := runSection(cmd, fc, name); err != nil {
+			if err := runSection(cmd, fc, name, *showSerial); err != nil {
 				fmt.Fprintf(os.Stderr, "lsmac: %s: %v\n", name, err)
 				ok = false
 			}
@@ -52,6 +56,10 @@ func main() {
 		return
 	}
 
+	runDefault(cmd, fc, *showSerial)
+}
+
+func runDefault(cmd source.SystemCommand, fc source.FileChecker, showSerial bool) {
 	ok := false
 
 	if osInfo, err := collect.CollectOS(cmd, fc); err != nil {
@@ -166,7 +174,7 @@ func collectChip(cmd source.SystemCommand) (chips.Chip, error) {
 // sections don't have a detailed view distinct from the compact one yet,
 // so they just print their one compact line/block in isolation; "cpu" is
 // the exception, with a genuinely more detailed view.
-func runSection(cmd source.SystemCommand, fc source.FileChecker, name string) error {
+func runSection(cmd source.SystemCommand, fc source.FileChecker, name string, showSerial bool) error {
 	switch strings.ToLower(name) {
 	case "os":
 		osInfo, err := collect.CollectOS(cmd, fc)
@@ -239,5 +247,147 @@ func runSection(cmd source.SystemCommand, fc source.FileChecker, name string) er
 		return render.IO(os.Stdout, ioInfo)
 	default:
 		return fmt.Errorf("unknown section %q", name)
+	}
+}
+
+// validSectionNames are the names accepted by --section, in both text and
+// JSON mode.
+var validSectionNames = []string{
+	"os", "machine", "firmware", "chip", "cpu", "gpu", "memory", "storage", "power", "io",
+}
+
+// runJSON collects the requested sections (all applicable ones if sections
+// is empty) and prints them as a single JSON object, one key per section.
+// Unlike the text paths, JSON mode always fetches full detail (FileVault
+// status, thermal state, the detailed CPU breakdown): --json is an
+// explicit request for complete structured data, not the fast-glance
+// default view, so it isn't held to the same latency budget.
+func runJSON(cmd source.SystemCommand, fc source.FileChecker, sections sectionFlag, showSerial bool) {
+	all := len(sections) == 0
+	want := func(name string) bool {
+		if all {
+			return true
+		}
+		for _, n := range sections {
+			if strings.EqualFold(n, name) {
+				return true
+			}
+		}
+		return false
+	}
+
+	unknown := false
+	for _, name := range sections {
+		if !slices.ContainsFunc(validSectionNames, func(v string) bool { return strings.EqualFold(v, name) }) {
+			fmt.Fprintf(os.Stderr, "lsmac: unknown section %q\n", name)
+			unknown = true
+		}
+	}
+	if unknown {
+		os.Exit(1)
+	}
+
+	result := make(map[string]any)
+	ok := false
+
+	if want("os") {
+		if v, err := collect.CollectOS(cmd, fc); err != nil {
+			fmt.Fprintf(os.Stderr, "lsmac: os: %v\n", err)
+		} else {
+			result["os"], ok = v, true
+		}
+	}
+
+	if want("machine") {
+		if v, err := collect.CollectMachine(cmd, showSerial); err != nil {
+			fmt.Fprintf(os.Stderr, "lsmac: machine: %v\n", err)
+		} else {
+			model, _ := models.Lookup(v.ModelIdentifier)
+			result["machine"], ok = render.MachineJSON(v, model), true
+		}
+	}
+
+	if want("firmware") {
+		if v, err := collect.CollectFirmware(cmd); err != nil {
+			fmt.Fprintf(os.Stderr, "lsmac: firmware: %v\n", err)
+		} else {
+			result["firmware"], ok = v, true
+		}
+	}
+
+	chip, chipErr := collectChip(cmd)
+	if want("chip") {
+		if chipErr != nil {
+			fmt.Fprintf(os.Stderr, "lsmac: chip: %v\n", chipErr)
+		} else {
+			result["chip"], ok = chip, true
+		}
+	}
+
+	if want("cpu") {
+		cpu, cpuErr := collect.CollectCPU(cmd)
+		detail, detailErr := collect.CollectCPUDetail(cmd)
+		switch {
+		case cpuErr != nil:
+			fmt.Fprintf(os.Stderr, "lsmac: cpu: %v\n", cpuErr)
+		case detailErr != nil:
+			fmt.Fprintf(os.Stderr, "lsmac: cpu: %v\n", detailErr)
+		default:
+			result["cpu"], ok = render.CPUJSON(cpu, detail), true
+		}
+	}
+
+	if want("gpu") {
+		if v, err := collect.CollectGPU(cmd); err != nil {
+			fmt.Fprintf(os.Stderr, "lsmac: gpu: %v\n", err)
+		} else {
+			result["gpu"], ok = v, true
+		}
+	}
+
+	if want("memory") {
+		if v, err := collect.CollectMemory(cmd); err != nil {
+			fmt.Fprintf(os.Stderr, "lsmac: memory: %v\n", err)
+		} else {
+			var bandwidth uint32
+			if chipErr == nil {
+				bandwidth = chip.MemoryBandwidthGBs
+			}
+			result["memory"], ok = render.MemoryJSON(v, bandwidth), true
+		}
+	}
+
+	if want("storage") {
+		if v, err := collect.CollectStorage(cmd, source.RealFilesystemStats{}, true); err != nil {
+			fmt.Fprintf(os.Stderr, "lsmac: storage: %v\n", err)
+		} else {
+			result["storage"], ok = v, true
+		}
+	}
+
+	if want("power") {
+		if v, err := collect.CollectPower(cmd, true); err != nil {
+			if !errors.Is(err, collect.ErrNoBattery) {
+				fmt.Fprintf(os.Stderr, "lsmac: power: %v\n", err)
+			}
+		} else {
+			result["power"], ok = v, true
+		}
+	}
+
+	if want("io") {
+		if v, err := collect.CollectIO(source.RealNetworkInterfaces{}); err != nil {
+			fmt.Fprintf(os.Stderr, "lsmac: io: %v\n", err)
+		} else {
+			result["io"], ok = v, true
+		}
+	}
+
+	if err := render.JSON(os.Stdout, result); err != nil {
+		fmt.Fprintf(os.Stderr, "lsmac: %v\n", err)
+		os.Exit(1)
+	}
+	if !ok {
+		os.Exit(1)
 	}
 }

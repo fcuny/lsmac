@@ -29,12 +29,12 @@ var ErrNoBattery = errors.New("no battery present")
 // fields (AdapterDetails/PowerDistribution) couldn't be verified against
 // real data - left out rather than guessed at from field names alone.
 type Power struct {
-	Percentage    uint8
-	Charging      bool
-	CycleCount    uint32
-	HealthPercent uint8  // FullChargeCapacity / DesignCapacity, both from BatteryData
-	ThermalState  string // "nominal" or "elevated" - see parseThermalState; "" when not checked
-	LowPowerMode  bool
+	Percentage    uint8  `json:"percentage"`
+	Charging      bool   `json:"charging"`
+	CycleCount    uint32 `json:"cycleCount"`
+	HealthPercent uint8  `json:"healthPercent"`          // FullChargeCapacity / DesignCapacity, both from BatteryData
+	ThermalState  string `json:"thermalState,omitempty"` // "nominal" or "elevated" - see parseThermalState; "" when not checked
+	LowPowerMode  bool   `json:"lowPowerMode"`
 }
 
 var (

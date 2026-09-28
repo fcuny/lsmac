@@ -9,9 +9,9 @@ import (
 
 // Firmware holds the facts collected for the Firmware section.
 type Firmware struct {
-	Version    string // e.g. "mBoot-20457.1.29", as the device tree names it
-	SecureBoot bool
-	SIPEnabled bool
+	Version    string `json:"version"` // e.g. "mBoot-20457.1.29", as the device tree names it
+	SecureBoot bool   `json:"secureBoot"`
+	SIPEnabled bool   `json:"sipEnabled"`
 }
 
 const csrutilPath = "/usr/bin/csrutil"

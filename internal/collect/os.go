@@ -28,13 +28,16 @@ var versionNames = map[int]string{
 
 // OS holds the facts collected for the OS section.
 type OS struct {
-	ProductName      string
-	VersionName      string // empty if the major version isn't in versionNames
-	ProductVersion   string
-	Build            string
-	DarwinVersion    string
-	Uptime           time.Duration
-	RosettaInstalled bool
+	ProductName    string `json:"productName"`
+	VersionName    string `json:"versionName,omitempty"` // empty if the major version isn't in versionNames
+	ProductVersion string `json:"productVersion"`
+	Build          string `json:"build"`
+	DarwinVersion  string `json:"darwinVersion"`
+	// Uptime is excluded from JSON in favor of UptimeSeconds, a plain
+	// number that doesn't need a duration parser to consume.
+	Uptime           time.Duration `json:"-"`
+	UptimeSeconds    float64       `json:"uptimeSeconds"`
+	RosettaInstalled bool          `json:"rosettaInstalled"`
 }
 
 var bootTimeSecRE = regexp.MustCompile(`sec = (\d+)`)
@@ -81,13 +84,16 @@ func CollectOS(cmd source.SystemCommand, fc source.FileChecker) (OS, error) {
 	majorStr, _, _ := strings.Cut(productVersion, ".")
 	major, _ := strconv.Atoi(majorStr)
 
+	uptime := time.Since(time.Unix(sec, 0))
+
 	return OS{
 		ProductName:      productName,
 		VersionName:      versionNames[major],
 		ProductVersion:   productVersion,
 		Build:            build,
 		DarwinVersion:    darwinVersion[0],
-		Uptime:           time.Since(time.Unix(sec, 0)),
+		Uptime:           uptime,
+		UptimeSeconds:    uptime.Seconds(),
 		RosettaInstalled: fc.Exists(rosettaRuntimePath),
 	}, nil
 }
