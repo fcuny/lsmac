@@ -48,7 +48,27 @@ func Chip(w io.Writer, chip chips.Chip) error {
 
 // CPU writes the CPU core-count summary line.
 func CPU(w io.Writer, cpu collect.CPU) error {
-	return field(w, "CPU", fmt.Sprintf("%d cores: %dP + %dE", cpu.TotalCores, cpu.PerformanceCores, cpu.EfficiencyCores))
+	return field(w, "CPU", formatCPUCores(cpu))
+}
+
+// formatCPUCores renders the compact "N cores: ..." breakdown. The common
+// case - exactly Performance then Efficiency, as on every real Apple
+// Silicon Mac shipped so far - gets the classic "8 cores: 4P + 4E" form.
+// Anything else (a single homogeneous tier, as seen on GitHub's virtualized
+// macOS runners, or more than two tiers) lists cluster names plainly
+// instead of force-fitting data into a P/E label that doesn't apply.
+func formatCPUCores(cpu collect.CPU) string {
+	if len(cpu.Clusters) == 2 && cpu.Clusters[0].Name == "Performance" && cpu.Clusters[1].Name == "Efficiency" {
+		return fmt.Sprintf("%d cores: %dP + %dE", cpu.TotalCores, cpu.Clusters[0].Cores, cpu.Clusters[1].Cores)
+	}
+	if len(cpu.Clusters) == 0 {
+		return fmt.Sprintf("%d cores", cpu.TotalCores)
+	}
+	parts := make([]string, len(cpu.Clusters))
+	for i, c := range cpu.Clusters {
+		parts[i] = fmt.Sprintf("%d %s", c.Cores, c.Name)
+	}
+	return fmt.Sprintf("%d cores: %s", cpu.TotalCores, strings.Join(parts, " + "))
 }
 
 // GPU writes the GPU summary line.
