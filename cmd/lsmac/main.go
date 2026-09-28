@@ -16,11 +16,23 @@ func main() {
 	cmd := source.RealCommand{}
 	ok := false
 
+	if chipID, err := collect.CollectChipID(cmd); err != nil {
+		fmt.Fprintf(os.Stderr, "lsmac: chip: %v\n", err)
+	} else {
+		chip, found := chips.Lookup(chipID)
+		if !found {
+			chip = chips.Chip{ID: chipID}
+		}
+		if err := render.Chip(os.Stdout, chip); err != nil {
+			fmt.Fprintf(os.Stderr, "lsmac: %v\n", err)
+		}
+		ok = true
+	}
+
 	if cpu, err := collect.CollectCPU(cmd); err != nil {
 		fmt.Fprintf(os.Stderr, "lsmac: cpu: %v\n", err)
 	} else {
-		specs := chips.FromBrandString(cpu.BrandName).Specs()
-		if err := render.CPU(os.Stdout, cpu, specs); err != nil {
+		if err := render.CPU(os.Stdout, cpu); err != nil {
 			fmt.Fprintf(os.Stderr, "lsmac: %v\n", err)
 		}
 		ok = true

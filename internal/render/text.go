@@ -11,21 +11,35 @@ import (
 	"fcuny.net/lsmac/internal/collect"
 )
 
-// CPU writes the CPU summary line, plus its memory bandwidth when known.
-func CPU(w io.Writer, cpu collect.CPU, specs chips.Specs) error {
-	if _, err := fmt.Fprintf(w, "Chip       %s\n", cpu.BrandName); err != nil {
+// Chip writes the chip identity line, plus process node and memory
+// bandwidth when known. name falls back to the raw chip ID when the chip
+// is not in the internal/chips table.
+func Chip(w io.Writer, chip chips.Chip) error {
+	name := chip.MarketingName
+	if name == "" {
+		name = chip.ID
+	}
+	if _, err := fmt.Fprintf(w, "Chip       %s (%s)\n", name, chip.ID); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(w, "CPU        %d cores: %dP + %dE\n",
-		cpu.TotalCores, cpu.PerformanceCores, cpu.EfficiencyCores); err != nil {
-		return err
+	if chip.ProcessNode != "" {
+		if _, err := fmt.Fprintf(w, "Process    %s\n", chip.ProcessNode); err != nil {
+			return err
+		}
 	}
-	if specs.CPUBandwidthGBs > 0 {
-		if _, err := fmt.Fprintf(w, "Bandwidth  %d GB/s\n", specs.CPUBandwidthGBs); err != nil {
+	if chip.MemoryBandwidthGBs > 0 {
+		if _, err := fmt.Fprintf(w, "Bandwidth  %d GB/s\n", chip.MemoryBandwidthGBs); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// CPU writes the CPU core-count summary line.
+func CPU(w io.Writer, cpu collect.CPU) error {
+	_, err := fmt.Fprintf(w, "CPU        %d cores: %dP + %dE\n",
+		cpu.TotalCores, cpu.PerformanceCores, cpu.EfficiencyCores)
+	return err
 }
 
 // GPU writes the GPU summary line.

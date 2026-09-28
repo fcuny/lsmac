@@ -3,6 +3,7 @@ package source
 import (
 	"bufio"
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"strconv"
 	"strings"
@@ -91,4 +92,25 @@ func StringProperty(props map[string]string, key string) (string, error) {
 		return "", fmt.Errorf("property %q not found", key)
 	}
 	return strings.Trim(raw, `"`), nil
+}
+
+// DataProperty decodes a raw ioreg "data" property (printed as
+// `<68657820...>`) as a NUL-terminated ASCII string. Device tree properties
+// such as platform-name are encoded this way.
+func DataProperty(props map[string]string, key string) (string, error) {
+	raw, ok := props[key]
+	if !ok {
+		return "", fmt.Errorf("property %q not found", key)
+	}
+	raw = strings.TrimSuffix(strings.TrimPrefix(raw, "<"), ">")
+
+	decoded, err := hex.DecodeString(raw)
+	if err != nil {
+		return "", fmt.Errorf("property %q: not hex data: %q", key, raw)
+	}
+
+	if i := bytes.IndexByte(decoded, 0); i >= 0 {
+		decoded = decoded[:i]
+	}
+	return string(decoded), nil
 }
