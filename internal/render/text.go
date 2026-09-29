@@ -361,10 +361,15 @@ func IO(w io.Writer, ioInfo collect.IO) error {
 			if _, err := fmt.Fprintf(w, "%-10s %-4s %s\n", iface.Name, state, iface.HardwareAddr); err != nil {
 				return err
 			}
-			continue
+		} else {
+			if _, err := fmt.Fprintf(w, "%-10s %s\n", iface.Name, state); err != nil {
+				return err
+			}
 		}
-		if _, err := fmt.Fprintf(w, "%-10s %s\n", iface.Name, state); err != nil {
-			return err
+		for _, addr := range iface.Addrs {
+			if _, err := fmt.Fprintf(w, "             %s\n", addr); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

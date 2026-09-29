@@ -149,6 +149,13 @@ concrete reason rather than being simply unfinished:
 - **Secure Boot policy** (Full/Reduced/Permissive Security): the only
   reliable source, `bputil -d`, requires root, which lsmac never asks for.
   A plain secure-boot-enabled flag is collected instead.
+- **The connected Wi-Fi network's name (SSID)**: since macOS Sonoma,
+  `ioreg`/`networksetup`/`system_profiler` all return the literal string
+  `<SSID Redacted>` unless the calling application has Location Services
+  permission - an unconditional privacy gate (TCC), not something root
+  fixes. The only workaround found needs a setuid binary, which is off the
+  table for the same reason as Secure Boot policy above. `--section io`
+  does show each interface's IP addresses, which aren't gated this way.
 
 ## Development
 
