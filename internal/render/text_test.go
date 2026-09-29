@@ -536,3 +536,21 @@ func TestIO(t *testing.T) {
 		}
 	}
 }
+
+func TestIOAddrs(t *testing.T) {
+	var buf bytes.Buffer
+	ioInfo := collect.IO{Interfaces: []collect.NetworkInterface{
+		{Name: "en0", HardwareAddr: "c4:35:d9:89:5c:6c", IsUp: true, Addrs: []string{"192.168.1.161/24", "fe80::1cd4:5590:d53a:7c08/64"}},
+	}}
+
+	if err := IO(&buf, ioInfo); err != nil {
+		t.Fatalf("IO() error = %v", err)
+	}
+
+	out := buf.String()
+	for _, want := range []string{"en0        up   c4:35:d9:89:5c:6c", "192.168.1.161/24", "fe80::1cd4:5590:d53a:7c08/64"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("IO() output = %q, want it to contain %q", out, want)
+		}
+	}
+}
