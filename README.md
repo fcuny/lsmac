@@ -16,6 +16,14 @@ and put `lsmac` on your `PATH`:
     tar -xzf lsmac-*-darwin-arm64.tar.gz
     install lsmac /usr/local/bin/
 
+macOS quarantines anything downloaded from a browser or `curl`, and
+Gatekeeper refuses to run an unsigned binary that's still quarantined
+("cannot be opened because the developer cannot be verified" or similar).
+lsmac isn't signed with a paid Apple Developer ID, so clear the quarantine
+flag once after downloading:
+
+    xattr -d com.apple.quarantine lsmac
+
 Or build from source:
 
     make build

@@ -48,4 +48,5 @@ jobs:
             "lsmac-${VERSION}-darwin-arm64.tar.gz" \
             "lsmac-${VERSION}-darwin-arm64.tar.gz.sha256" \
             --title "$VERSION" \
+            --notes "lsmac isn't signed with a paid Apple Developer ID, so macOS Gatekeeper will refuse to run the downloaded binary until you clear the quarantine flag once: \`xattr -d com.apple.quarantine lsmac\`" \
             --generate-notes
