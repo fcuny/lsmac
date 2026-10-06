@@ -2,6 +2,7 @@ package collect
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -203,5 +204,42 @@ func TestCollectPowerHealthTrulyUnknown(t *testing.T) {
 	}
 	if got.HealthPercent != nil {
 		t.Errorf("HealthPercent = %v, want nil (unknown)", *got.HealthPercent)
+	}
+}
+
+func TestParseBatteryHealth(t *testing.T) {
+	tests := []struct {
+		name    string
+		data    string
+		want    int // -1 means unknown (nil)
+		wantErr bool
+	}{
+		{"FullChargeCapacity", `{"FullChargeCapacity"=4257,"DesignCapacity"=4563}`, 93, false},
+		// Real values from an M5 Pro: FccComp1 above DesignCapacity on a
+		// new battery. System Information reports this as 100%.
+		{"above design capped", `{"FccComp1"=8651,"DesignCapacity"=8579}`, 100, false},
+		// Without the cap this would overflow uint8 and wrap.
+		{"far above design capped", `{"FccComp1"=30000,"DesignCapacity"=8579}`, 100, false},
+		{"no full charge key", `{"DesignCapacity"=8579}`, -1, false},
+		{"zero design", `{"FccComp1"=8651,"DesignCapacity"=0}`, -1, true},
+		{"no design", `{"FccComp1"=8651,"Serial"="F5DHUA000HW0000VD8"}`, -1, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseBatteryHealth(tt.data)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("parseBatteryHealth() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err != nil && strings.Contains(err.Error(), "F5DHUA000HW0000VD8") {
+				t.Errorf("error %q leaks the battery serial", err)
+			}
+			gotN := -1
+			if got != nil {
+				gotN = int(*got)
+			}
+			if gotN != tt.want {
+				t.Errorf("parseBatteryHealth() = %d, want %d", gotN, tt.want)
+			}
+		})
 	}
 }
