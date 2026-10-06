@@ -154,6 +154,13 @@ func CollectPower(cmd source.SystemCommand, includeThermal bool) (Power, error) 
 //
 // If neither key is present, health is unknown: returns (nil, nil), not an
 // error, so the rest of the Power section still collects normally.
+//
+// The result is capped at 100. A new battery can report a full-charge
+// capacity slightly above DesignCapacity (FccComp1=8651 against 8579 on the
+// same M5 Pro), and System Information reports that as 100%.
+//
+// Errors name the missing key without echoing batteryData, since the dict
+// carries the battery's serial number.
 func parseBatteryHealth(batteryData string) (*uint8, error) {
 	full := fullChargeCapacityRE.FindStringSubmatch(batteryData)
 	if full == nil {
@@ -164,17 +171,20 @@ func parseBatteryHealth(batteryData string) (*uint8, error) {
 	}
 	design := designCapacityRE.FindStringSubmatch(batteryData)
 	if design == nil {
-		return nil, fmt.Errorf("DesignCapacity not found in %q", batteryData)
+		return nil, fmt.Errorf("DesignCapacity not found in BatteryData")
 	}
 	fullN, err := strconv.ParseFloat(full[1], 64)
 	if err != nil {
 		return nil, fmt.Errorf("full charge capacity: %w", err)
 	}
 	designN, err := strconv.ParseFloat(design[1], 64)
-	if err != nil || designN == 0 {
+	if err != nil {
 		return nil, fmt.Errorf("DesignCapacity: %w", err)
 	}
-	health := uint8(fullN / designN * 100)
+	if designN == 0 {
+		return nil, fmt.Errorf("DesignCapacity is 0")
+	}
+	health := uint8(min(fullN/designN*100, 100))
 	return &health, nil
 }
 
